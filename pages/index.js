@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useState } from "react";
  * MVP – Checklist de Fluxo de Trabalho (single-user)
  * - Next.js Pages Router (pages/index.js)
  * - Persistência: localStorage
- * - Sem Tailwind (CSS inline + classes simples)
+ * - Tema escuro
+ * - Prazo final automático: 45 dias úteis após a data do evento
  */
 
 const STORAGE_KEY = "eks_checklist_jobs_v1";
@@ -32,7 +33,7 @@ const TEMPLATE_TASKS = [
     id: "album_selected",
     title: "CLIENTE SELECIONOU AS FOTOS DO ÁLBUM NA DATA",
     hasDate: true,
-    extraChoice: true, // Online / Presencial
+    extraChoice: true,
   },
   {
     id: "layout_sent",
@@ -82,9 +83,16 @@ function daysBetween(fromISO, toISO) {
   return Math.round((b - a) / (1000 * 60 * 60 * 24));
 }
 
-function addDaysISO(iso, days) {
-  const d = new Date((iso || todayISO()) + "T00:00:00");
-  d.setDate(d.getDate() + days);
+function addBusinessDaysISO(startISO, businessDays) {
+  if (!startISO) return "";
+  let d = new Date(startISO + "T00:00:00");
+  let added = 0;
+  while (added < businessDays) {
+    d.setDate(d.getDate() + 1);
+    const day = d.getDay();
+    // 0 = domingo, 6 = sábado
+    if (day !== 0 && day !== 6) added++;
+  }
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
@@ -155,7 +163,7 @@ export default function Home() {
     event: "",
     eventDate: "",
     deliveryFormat: "ÁLBUM / DIGITAL",
-    dueDate: addDaysISO(todayISO(), 60),
+    dueDate: "",
   });
 
   const [showNew, setShowNew] = useState(false);
@@ -216,12 +224,20 @@ export default function Home() {
       event: "",
       eventDate: "",
       deliveryFormat: "ÁLBUM / DIGITAL",
-      dueDate: addDaysISO(todayISO(), 60),
+      dueDate: "",
     });
   }
 
   function updateActive(patch) {
     if (!active) return;
+
+    // Se o usuário alterar a data do evento, recalcula automaticamente o prazo final (45 dias úteis).
+    if (Object.prototype.hasOwnProperty.call(patch, "eventDate")) {
+      const eventDate = patch.eventDate;
+      const computedDue = eventDate ? addBusinessDaysISO(eventDate, 45) : "";
+      patch = { ...patch, dueDate: computedDue };
+    }
+
     setJobs((prev) => prev.map((j) => (j.id === active.id ? { ...j, ...patch } : j)));
   }
 
@@ -270,9 +286,7 @@ export default function Home() {
         <header style={styles.header}>
           <div>
             <div style={styles.h1}>Checklist do Fluxo de Trabalho</div>
-            <div style={styles.sub}>
-              MVP single-user • salva no navegador • com backup JSON
-            </div>
+            <div style={styles.sub}>MVP single-user • salva no navegador • com backup JSON</div>
           </div>
 
           <div style={styles.headerBtns}>
@@ -280,13 +294,12 @@ export default function Home() {
               Backup
             </button>
             <button style={styles.btn} onClick={() => setShowNew(true)}>
-              Novo job
+              Novo Projeto
             </button>
           </div>
         </header>
 
         <div style={styles.grid}>
-          {/* Sidebar */}
           <aside style={styles.sidebar}>
             <div style={styles.card}>
               <div style={styles.cardHeader}>
@@ -306,7 +319,7 @@ export default function Home() {
 
               <div style={styles.list}>
                 {filtered.length === 0 ? (
-                  <div style={styles.empty}>Nenhum job. Clique em “Novo job”.</div>
+                  <div style={styles.empty}>Nenhum projeto. Clique em “Novo Projeto”.</div>
                 ) : (
                   filtered.map((j) => {
                     const isActive = j.id === activeId;
@@ -319,7 +332,7 @@ export default function Home() {
                         onClick={() => setActiveId(j.id)}
                         style={{
                           ...styles.listItem,
-                          background: isActive ? "rgba(0,0,0,0.04)" : "transparent",
+                          background: isActive ? "rgba(255,255,255,0.06)" : "transparent",
                         }}
                       >
                         <div style={styles.listTop}>
@@ -341,11 +354,10 @@ export default function Home() {
             </div>
           </aside>
 
-          {/* Main */}
           <main style={styles.main}>
             <div style={styles.card}>
               {!active ? (
-                <div style={styles.emptyBig}>Selecione um job na lista.</div>
+                <div style={styles.emptyBig}>Selecione um projeto na lista.</div>
               ) : (
                 <div>
                   <div style={styles.mainHeader}>
@@ -410,7 +422,7 @@ export default function Home() {
                     </div>
 
                     <div style={styles.field}>
-                      <label style={styles.label}>Prazo final</label>
+                      <label style={styles.label}>Prazo final (auto 45 dias úteis)</label>
                       <input
                         type="date"
                         value={active.dueDate || ""}
@@ -439,7 +451,7 @@ export default function Home() {
                                 checked={!!t.done}
                                 onChange={(e) => updateTask(t.id, { done: e.target.checked })}
                               />
-                              <span style={{ ...styles.taskTitle, opacity: t.done ? 0.5 : 1 }}>
+                              <span style={{ ...styles.taskTitle, opacity: t.done ? 0.6 : 1 }}>
                                 {t.title}
                               </span>
                             </label>
@@ -508,12 +520,11 @@ export default function Home() {
         </footer>
       </div>
 
-      {/* Modal Novo Job */}
       {showNew ? (
         <div style={styles.modalOverlay} onClick={() => setShowNew(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
-              <strong>Novo job</strong>
+              <strong>Novo Projeto</strong>
               <button style={styles.btnGhost} onClick={() => setShowNew(false)}>
                 Fechar
               </button>
@@ -546,13 +557,17 @@ export default function Home() {
                   <input
                     type="date"
                     value={newJob.eventDate}
-                    onChange={(e) => setNewJob((s) => ({ ...s, eventDate: e.target.value }))}
+                    onChange={(e) => {
+                      const eventDate = e.target.value;
+                      const dueDate = eventDate ? addBusinessDaysISO(eventDate, 45) : "";
+                      setNewJob((s) => ({ ...s, eventDate, dueDate }));
+                    }}
                     style={styles.input}
                   />
                 </div>
 
                 <div style={styles.field}>
-                  <label style={styles.label}>Prazo final</label>
+                  <label style={styles.label}>Prazo final (auto 45 dias úteis)</label>
                   <input
                     type="date"
                     value={newJob.dueDate}
@@ -565,9 +580,7 @@ export default function Home() {
                   <label style={styles.label}>Formato de entrega</label>
                   <select
                     value={newJob.deliveryFormat}
-                    onChange={(e) =>
-                      setNewJob((s) => ({ ...s, deliveryFormat: e.target.value }))
-                    }
+                    onChange={(e) => setNewJob((s) => ({ ...s, deliveryFormat: e.target.value }))}
                     style={styles.input}
                   >
                     <option value="ÁLBUM / DIGITAL">ÁLBUM / DIGITAL</option>
@@ -582,7 +595,7 @@ export default function Home() {
                   Cancelar
                 </button>
                 <button style={styles.btn} onClick={createJob}>
-                  Criar job
+                  Criar Projeto
                 </button>
               </div>
             </div>
@@ -590,7 +603,6 @@ export default function Home() {
         </div>
       ) : null}
 
-      {/* Modal Backup */}
       {showBackup ? (
         <div style={styles.modalOverlay} onClick={() => setShowBackup(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -602,7 +614,7 @@ export default function Home() {
             </div>
 
             <div style={styles.modalBody}>
-              <p style={{ marginTop: 0, color: "rgba(0,0,0,0.7)" }}>
+              <p style={{ marginTop: 0, color: "rgba(255,255,255,0.75)" }}>
                 Seus dados ficam salvos no navegador. Faça exportação periódica.
               </p>
 
@@ -626,8 +638,8 @@ export default function Home() {
                 </label>
               </div>
 
-              <div style={{ marginTop: 14, fontSize: 12, color: "rgba(0,0,0,0.55)" }}>
-                Se abrir em outro computador/celular, seus jobs não aparecem automaticamente (ainda).
+              <div style={{ marginTop: 14, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+                Se abrir em outro computador/celular, seus projetos não aparecem automaticamente (ainda).
                 A gente resolve isso na fase 2 com sincronização em nuvem.
               </div>
             </div>
@@ -641,8 +653,9 @@ export default function Home() {
 const styles = {
   page: {
     minHeight: "100vh",
-    background: "#fafafa",
-    color: "#111",
+    background: "#272727",
+    color: "#F2F2F2",
+    fontFamily: "Calibri, 'Segoe UI', Arial, sans-serif",
   },
   container: {
     maxWidth: 1200,
@@ -658,7 +671,7 @@ const styles = {
     marginBottom: 14,
   },
   h1: { fontSize: 26, fontWeight: 700 },
-  sub: { fontSize: 13, color: "rgba(0,0,0,0.6)" },
+  sub: { fontSize: 13, color: "rgba(255,255,255,0.7)" },
   headerBtns: { display: "flex", gap: 10, alignItems: "center" },
 
   grid: {
@@ -670,17 +683,19 @@ const styles = {
   main: {},
 
   card: {
-    background: "#fff",
-    border: "1px solid rgba(0,0,0,0.08)",
+    background: "#1F1F1F",
+    border: "1px solid rgba(255,255,255,0.10)",
     borderRadius: 16,
     overflow: "hidden",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.05)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
   },
-  cardHeader: { padding: 14, borderBottom: "1px solid rgba(0,0,0,0.06)" },
+  cardHeader: { padding: 14, borderBottom: "1px solid rgba(255,255,255,0.08)" },
   search: {
     width: "100%",
     borderRadius: 12,
-    border: "1px solid rgba(0,0,0,0.12)",
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "#2B2B2B",
+    color: "#F2F2F2",
     padding: "10px 12px",
     outline: "none",
     fontSize: 14,
@@ -690,8 +705,9 @@ const styles = {
     fontSize: 12,
     padding: "5px 10px",
     borderRadius: 999,
-    background: "rgba(0,0,0,0.04)",
-    border: "1px solid rgba(0,0,0,0.08)",
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    color: "rgba(255,255,255,0.88)",
   },
 
   list: { maxHeight: "70vh", overflow: "auto" },
@@ -700,18 +716,19 @@ const styles = {
     textAlign: "left",
     border: "none",
     padding: 14,
-    borderBottom: "1px solid rgba(0,0,0,0.05)",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
     cursor: "pointer",
+    color: "#F2F2F2",
   },
   listTop: { display: "flex", justifyContent: "space-between", gap: 10 },
   listTitle: { fontWeight: 700, fontSize: 14 },
-  listRight: { fontWeight: 700, fontSize: 13, color: "rgba(0,0,0,0.75)" },
-  listSub: { marginTop: 4, fontSize: 13, color: "rgba(0,0,0,0.7)" },
+  listRight: { fontWeight: 700, fontSize: 13, color: "rgba(255,255,255,0.8)" },
+  listSub: { marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.72)" },
   listMeta: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 },
 
   mainHeader: {
     padding: 16,
-    borderBottom: "1px solid rgba(0,0,0,0.06)",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
     display: "flex",
     justifyContent: "space-between",
     gap: 12,
@@ -728,15 +745,15 @@ const styles = {
     fontSize: 13,
     marginTop: 12,
   },
-  progressLabel: { color: "rgba(0,0,0,0.7)" },
+  progressLabel: { color: "rgba(255,255,255,0.72)" },
   progressBar: {
     height: 10,
-    background: "rgba(0,0,0,0.06)",
+    background: "rgba(255,255,255,0.08)",
     borderRadius: 999,
     overflow: "hidden",
     marginTop: 8,
   },
-  progressFill: { height: "100%", background: "#111" },
+  progressFill: { height: "100%", background: "#F2F2F2" },
 
   fields: {
     padding: 16,
@@ -751,10 +768,12 @@ const styles = {
     gap: 6,
     gridColumn: "span 2",
   },
-  label: { fontSize: 12, color: "rgba(0,0,0,0.6)" },
+  label: { fontSize: 12, color: "rgba(255,255,255,0.70)" },
   input: {
     borderRadius: 12,
-    border: "1px solid rgba(0,0,0,0.12)",
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "#2B2B2B",
+    color: "#F2F2F2",
     padding: "10px 12px",
     outline: "none",
     fontSize: 14,
@@ -763,15 +782,15 @@ const styles = {
   taskHint: {
     padding: "0 16px 8px",
     fontSize: 13,
-    color: "rgba(0,0,0,0.6)",
+    color: "rgba(255,255,255,0.70)",
   },
 
   taskCard: {
-    border: "1px solid rgba(0,0,0,0.08)",
+    border: "1px solid rgba(255,255,255,0.10)",
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
-    background: "#fff",
+    background: "#1F1F1F",
   },
   taskTop: { display: "flex", justifyContent: "space-between", gap: 10 },
   checkboxRow: { display: "flex", gap: 10, alignItems: "flex-start" },
@@ -785,50 +804,50 @@ const styles = {
   },
 
   btn: {
-    background: "#111",
-    color: "#fff",
-    border: "none",
-    borderRadius: 12,
-    padding: "10px 14px",
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: 14,
-  },
-  btnGhost: {
-    background: "transparent",
+    background: "#F2F2F2",
     color: "#111",
-    border: "1px solid rgba(0,0,0,0.12)",
-    borderRadius: 12,
-    padding: "10px 14px",
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: 14,
-  },
-  btnDanger: {
-    background: "#fff",
-    color: "#b42318",
-    border: "1px solid rgba(180,35,24,0.25)",
+    border: "none",
     borderRadius: 12,
     padding: "10px 14px",
     cursor: "pointer",
     fontWeight: 800,
     fontSize: 14,
   },
+  btnGhost: {
+    background: "transparent",
+    color: "#F2F2F2",
+    border: "1px solid rgba(255,255,255,0.16)",
+    borderRadius: 12,
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 14,
+  },
+  btnDanger: {
+    background: "transparent",
+    color: "#ffb4ab",
+    border: "1px solid rgba(255,180,171,0.25)",
+    borderRadius: 12,
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 14,
+  },
 
-  empty: { padding: 16, color: "rgba(0,0,0,0.6)", fontSize: 13 },
-  emptyBig: { padding: 22, color: "rgba(0,0,0,0.6)", fontSize: 14 },
+  empty: { padding: 16, color: "rgba(255,255,255,0.70)", fontSize: 13 },
+  emptyBig: { padding: 22, color: "rgba(255,255,255,0.70)", fontSize: 14 },
 
   footer: {
     marginTop: 16,
     textAlign: "center",
     fontSize: 12,
-    color: "rgba(0,0,0,0.55)",
+    color: "rgba(255,255,255,0.55)",
   },
 
   modalOverlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.35)",
+    background: "rgba(0,0,0,0.55)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -838,15 +857,16 @@ const styles = {
   modal: {
     width: "100%",
     maxWidth: 860,
-    background: "#fff",
+    background: "#1F1F1F",
     borderRadius: 16,
-    border: "1px solid rgba(0,0,0,0.12)",
-    boxShadow: "0 18px 50px rgba(0,0,0,0.2)",
+    border: "1px solid rgba(255,255,255,0.14)",
+    boxShadow: "0 18px 50px rgba(0,0,0,0.5)",
     overflow: "hidden",
+    color: "#F2F2F2",
   },
   modalHeader: {
     padding: 14,
-    borderBottom: "1px solid rgba(0,0,0,0.06)",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -859,12 +879,12 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     background: "transparent",
-    color: "#111",
-    border: "1px solid rgba(0,0,0,0.12)",
+    color: "#F2F2F2",
+    border: "1px solid rgba(255,255,255,0.16)",
     borderRadius: 12,
     padding: "10px 14px",
     cursor: "pointer",
-    fontWeight: 800,
+    fontWeight: 900,
     fontSize: 14,
   },
 };
