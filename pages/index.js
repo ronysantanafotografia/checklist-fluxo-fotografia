@@ -2,145 +2,248 @@ import React, { useEffect, useMemo, useState } from "react";
 
 /**
  * Checklist do Fluxo de Trabalho – MVP single-user
- * - Next.js (pages/index.js)
+ * - Next.js Pages Router (pages/index.js)
  * - Persistência: localStorage
- * - Dark mode (#272727)
- * - Fonte: Calibri (fallbacks)
- * - Prazo final automático: 45 dias úteis após data do evento
- * - Dias úteis: seg-sex + ignora feriados nacionais fixos (Brasil)
- * - Tarefas: checkbox + (data quando existir) + NOTAS (sempre)
- * - Sem campo Link
+ * - Dark mode (#272727) + fonte Calibri
+ * - Prazo final automático: 45 dias úteis após a data do evento (seg-sex)
+ * - Ignora feriados nacionais fixos (Brasil)
+ * - 4 templates de checklist:
+ *    1) Ensaio + Somente digital
+ *    2) Evento + Somente digital
+ *    3) Ensaio + Digital + álbum
+ *    4) Evento + Digital + álbum
+ * - Sem campo LINK: só NOTAS
+ * - Depois de criado:
+ *    - Tipo de projeto NÃO muda (travado)
+ *    - Formato de entrega PODE mudar e o checklist se adapta automaticamente
  */
 
-const STORAGE_KEY = "eks_checklist_jobs_v2";
+const STORAGE_KEY = "eks_checklist_jobs_v4";
 
 // Feriados nacionais fixos (Brasil) – MM-DD
 const FIXED_HOLIDAYS_MMDD = [
-  "01-01", // Confraternização Universal
-  "04-21", // Tiradentes
-  "05-01", // Dia do Trabalho
-  "09-07", // Independência
-  "10-12", // N. Sra. Aparecida
-  "11-02", // Finados
-  "11-15", // Proclamação da República
-  "12-25", // Natal
+  "01-01",
+  "04-21",
+  "05-01",
+  "09-07",
+  "10-12",
+  "11-02",
+  "11-15",
+  "12-25",
 ];
 
-const TEMPLATE_TASKS = [
-  { id: "backup", title: "FAZER BACKUP", hasDate: false },
-  { id: "blog_50", title: "ESCOLHER 50 FOTOS PARA O BLOG", hasDate: false },
-  { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
+const PROJECT_TYPE = {
+  EVENTO: "EVENTO",
+  ENSAIO: "ENSAIO",
+};
 
-  { id: "filter_1", title: "PRIMEIRO FILTRO", hasDate: false },
-  { id: "filter_2", title: "SEGUNDO FILTRO", hasDate: false },
-  { id: "filter_final", title: "FILTRO FINAL", hasDate: false },
+const DELIVERY_MODE = {
+  DIGITAL: "DIGITAL",
+  DIGITAL_ALBUM: "DIGITAL_ALBUM",
+};
 
-  { id: "treat_all", title: "TRATAMENTO DE TODAS AS IMAGENS", hasDate: false },
+// 4 checklists (templates)
+const TASK_TEMPLATES = {
+  // Ensaio - somente digital
+  [`${PROJECT_TYPE.ENSAIO}__${DELIVERY_MODE.DIGITAL}`]: [
+    { id: "backup", title: "FAZER BACKUP" },
+    { id: "blog_15", title: "ESCOLHER 15 FOTOS PARA O BLOG" },
+    { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
 
-  {
-    id: "gallery_sent",
-    title:
-      "REVISOU E EXPORTOU AS IMAGENS PARA A GALERIA ON-LINE, ENVIOU PARA O CLIENTE",
-    hasDate: true,
-  },
+    { id: "filter_1", title: "PRIMEIRO FILTRO" },
+    { id: "filter_final", title: "FILTRO FINAL" },
 
-  {
-    id: "album_link_sent",
-    title: "ENVIOU LINK PARA O CLIENTE ESCOLHER AS FOTOS DO ÁLBUM NO DIA",
-    hasDate: true,
-  },
+    { id: "treat_fast", title: "TRATAMENTO RÁPIDO DE TODAS AS IMAGENS" },
 
-  {
-    id: "album_selected",
-    title: "CLIENTE SELECIONOU AS FOTOS DO ÁLBUM NA DATA",
-    hasDate: true,
-    extraChoice: true, // ONLINE/PRESENCIAL
-  },
+    { id: "client_choose_sent", title: "ENVIOU PARA O CLIENTE ESCOLHER NO DIA", hasDate: true },
 
-  {
-    id: "layout_sent",
-    title: "DIAGRAMOU E ENVIOU PARA O CLIENTE APROVAR NO DIA",
-    hasDate: true,
-  },
+    {
+      id: "client_chose_images",
+      title: "CLIENTE SELECIONOU AS IMAGENS NO DIA",
+      hasDate: true,
+      extraChoice: true,
+    },
 
-  { id: "album_approved", title: "CLIENTE APROVOU O ÁLBUM NO DIA", hasDate: true },
-  { id: "album_export", title: "REVISOU AS FOTOS E EXPORTOU O ÁLBUM", hasDate: false },
+    {
+      id: "final_treatment_export",
+      title: "TRATAMENTO FINAL DAS IMAGENS E EXPORTAR (INTERNET, TRATADAS)",
+    },
 
-  { id: "bindery_sent", title: "ENVIOU PARA ENCADERNADORA NO DIA", hasDate: true },
-  { id: "bindery_arrived", title: "CHEGOU DA ENCADERNADORA NO DIA", hasDate: true },
+    {
+      id: "send_images_client",
+      title:
+        "ENVIAR IMAGENS PARA O CLIENTE (Em baixa no WhatsApp e em alta no MyAirBridge)",
+    },
 
-  {
-    id: "delivery_prep",
-    title:
-      "PREPAROU A ENTREGA (Gravar imagens em alta no pen drive, imprimir 5 fotos, cartão de agradecimento e feedback, mimos, etc.)",
-    hasDate: false,
-  },
+    {
+      id: "delivery_prep",
+      title:
+        "PREPAROU A ENTREGA (Gravar imagens em alta no pen drive, imprimir 3 fotos, cartão de agradecimento e feedback, mimos, etc.)",
+    },
 
-  {
-    id: "delivered",
-    title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA",
-    hasDate: true,
-  },
-];
+    { id: "delivered", title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA", hasDate: true },
+  ],
+
+  // Evento - somente digital
+  [`${PROJECT_TYPE.EVENTO}__${DELIVERY_MODE.DIGITAL}`]: [
+    { id: "backup", title: "FAZER BACKUP" },
+
+    { id: "blog_50", title: "ESCOLHER 50 FOTOS PARA O BLOG" },
+    { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
+
+    { id: "filter_1", title: "PRIMEIRO FILTRO" },
+    { id: "filter_2", title: "SEGUNDO FILTRO" },
+    { id: "filter_final", title: "FILTRO FINAL" },
+
+    { id: "treat_all", title: "TRATAMENTO DE TODAS AS IMAGENS" },
+
+    {
+      id: "gallery_sent",
+      title: "REVISOU E EXPORTOU AS IMAGENS PARA A GALERIA ON-LINE, ENVIOU PARA O CLIENTE",
+      hasDate: true,
+    },
+
+    {
+      id: "delivery_prep",
+      title:
+        "PREPAROU A ENTREGA (Gravar imagens em alta no pen drive, imprimir 5 fotos, cartão de agradecimento e feedback, mimos, etc.)",
+    },
+
+    { id: "delivered", title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA", hasDate: true },
+  ],
+
+  // Ensaio - com álbum
+  [`${PROJECT_TYPE.ENSAIO}__${DELIVERY_MODE.DIGITAL_ALBUM}`]: [
+    { id: "backup", title: "FAZER BACKUP" },
+
+    { id: "blog_15", title: "ESCOLHER 15 FOTOS PARA O BLOG" },
+    { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
+
+    { id: "filter_final", title: "FILTRO FINAL" },
+
+    { id: "treat_fast", title: "TRATAMENTO RÁPIDO DE TODAS AS IMAGENS" },
+
+    { id: "client_choose_sent", title: "ENVIOU PARA O CLIENTE ESCOLHER NO DIA", hasDate: true },
+
+    {
+      id: "client_chose_images",
+      title: "CLIENTE SELECIONOU AS IMAGENS NO DIA",
+      hasDate: true,
+      extraChoice: true,
+    },
+
+    {
+      id: "final_treatment_export",
+      title: "TRATAMENTO FINAL DAS IMAGENS E EXPORTAR (INTERNET, TRATADAS)",
+    },
+
+    { id: "album_layout_sent", title: "DIAGRAMAR ÁLBUM E ENVIAR PARA APROVAÇÃO NO DIA", hasDate: true },
+    { id: "album_approved", title: "CLIENTE APROVOU O ÁLBUM NO DIA", hasDate: true },
+    { id: "album_review_images", title: "REVISAR AS IMAGENS DO ÁLBUM" },
+
+    { id: "send_lowres_client", title: "ENVIAR IMAGENS EM BAIXA RESOLUÇÃO PARA O CLIENTE" },
+
+    { id: "bindery_sent", title: "FOI ENVIADO PARA ENCADERNADORA NO DIA", hasDate: true },
+    { id: "bindery_arrived", title: "CHEGOU DA ENCADERNADORA NO DIA", hasDate: true },
+
+    {
+      id: "delivery_prep",
+      title:
+        "PREPAROU A ENTREGA (Gravar imagens em alta no pen drive, imprimir cartão de agradecimento e feedback, mimos, etc.)",
+    },
+
+    { id: "delivered", title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA", hasDate: true },
+  ],
+
+  // Evento - com álbum
+  [`${PROJECT_TYPE.EVENTO}__${DELIVERY_MODE.DIGITAL_ALBUM}`]: [
+    { id: "backup", title: "FAZER BACKUP" },
+
+    { id: "blog_50", title: "ESCOLHER 50 FOTOS PARA O BLOG" },
+    { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
+
+    { id: "filter_1", title: "PRIMEIRO FILTRO" },
+    { id: "filter_2", title: "SEGUNDO FILTRO" },
+    { id: "filter_final", title: "FILTRO FINAL" },
+
+    { id: "treat_all", title: "TRATAMENTO DE TODAS AS IMAGENS" },
+
+    {
+      id: "gallery_sent",
+      title: "REVISOU E EXPORTOU AS IMAGENS PARA A GALERIA ON-LINE, ENVIOU PARA O CLIENTE",
+      hasDate: true,
+    },
+
+    { id: "album_link_sent", title: "ENVIOU LINK PARA O CLIENTE ESCOLHER AS FOTOS DO ÁLBUM NO DIA", hasDate: true },
+
+    {
+      id: "album_selected",
+      title: "CLIENTE SELECIONOU AS FOTOS DO ÁLBUM NA DATA",
+      hasDate: true,
+      extraChoice: true,
+    },
+
+    { id: "layout_sent", title: "DIAGRAMOU E ENVIOU PARA O CLIENTE APROVAR NO DIA", hasDate: true },
+    { id: "album_approved", title: "CLIENTE APROVOU O ÁLBUM NO DIA", hasDate: true },
+    { id: "album_export", title: "REVISOU AS FOTOS E EXPORTOU O ÁLBUM" },
+
+    { id: "bindery_sent", title: "ENVIOU PARA ENCADERNADORA NO DIA", hasDate: true },
+    { id: "bindery_arrived", title: "CHEGOU DA ENCADERNADORA NO DIA", hasDate: true },
+
+    {
+      id: "delivery_prep",
+      title:
+        "PREPAROU A ENTREGA (Gravar imagens em alta no pen drive, imprimir 5 fotos, cartão de agradecimento e feedback, mimos, etc.)",
+    },
+
+    { id: "delivered", title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA", hasDate: true },
+  ],
+};
 
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
-
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
-
 function formatBR(iso) {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("pt-BR");
 }
-
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
-
 function mmdd(date) {
   return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
-
 function isFixedHoliday(dateObj) {
   return FIXED_HOLIDAYS_MMDD.includes(mmdd(dateObj));
 }
-
 function addBusinessDaysISO(startISO, businessDays) {
   if (!startISO) return "";
   let d = new Date(startISO + "T00:00:00");
   let added = 0;
-
   while (added < businessDays) {
     d.setDate(d.getDate() + 1);
-    const dow = d.getDay(); // 0 dom, 6 sab
+    const dow = d.getDay();
     const isWeekend = dow === 0 || dow === 6;
-
-    if (!isWeekend && !isFixedHoliday(d)) {
-      added++;
-    }
+    if (!isWeekend && !isFixedHoliday(d)) added++;
   }
-
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
-
 function daysBetween(fromISO, toISO) {
   if (!fromISO || !toISO) return null;
   const a = new Date(fromISO + "T00:00:00");
   const b = new Date(toISO + "T00:00:00");
   return Math.round((b - a) / (1000 * 60 * 60 * 24));
 }
-
 function computeProgress(tasks) {
   if (!tasks?.length) return 0;
   const done = tasks.filter((t) => t.done).length;
   return Math.round((done / tasks.length) * 100);
 }
-
 function jobStatus(job) {
   const allDone = job?.tasks?.every((t) => t.done);
   if (allDone) return "Concluído";
@@ -152,16 +255,91 @@ function jobStatus(job) {
   }
   return "Em andamento";
 }
-
-function makeDefaultTasks() {
-  return TEMPLATE_TASKS.map((tpl) => ({
-    id: tpl.id,
-    title: tpl.title,
+function templateKey(projectType, deliveryMode) {
+  return `${projectType}__${deliveryMode}`;
+}
+function makeTasks(projectType, deliveryMode) {
+  const tpl = TASK_TEMPLATES[templateKey(projectType, deliveryMode)] || [];
+  return tpl.map((t) => ({
+    id: t.id,
+    title: t.title,
     done: false,
     date: "",
     notes: "",
-    choice: tpl.extraChoice ? "" : undefined,
+    choice: t.extraChoice ? "" : undefined,
+    hasDate: !!t.hasDate,
+    extraChoice: !!t.extraChoice,
   }));
+}
+
+/**
+ * Rebuild de tasks quando muda o deliveryMode:
+ * - preserva dados de tasks que existirem pelo mesmo id
+ * - remove tasks que não existem no novo template
+ * - adiciona tasks novas com default
+ */
+function rebuildTasksForDeliveryChange(projectType, fromTasks, newDeliveryMode) {
+  const tpl = TASK_TEMPLATES[templateKey(projectType, newDeliveryMode)] || [];
+  const oldById = new Map((fromTasks || []).map((t) => [t.id, t]));
+
+  return tpl.map((ref) => {
+    const prev = oldById.get(ref.id);
+    return {
+      id: ref.id,
+      title: ref.title,
+      done: prev ? !!prev.done : false,
+      date: prev ? (prev.date || "") : "",
+      notes: prev ? (prev.notes || "") : "",
+      choice: ref.extraChoice ? (prev?.choice || "") : undefined,
+      hasDate: !!ref.hasDate,
+      extraChoice: !!ref.extraChoice,
+    };
+  });
+}
+
+function normalizeLoadedJobs(rawJobs) {
+  if (!Array.isArray(rawJobs)) return [];
+  return rawJobs.map((j) => {
+    const projectType = j.projectType || PROJECT_TYPE.EVENTO;
+    const deliveryMode = j.deliveryMode || DELIVERY_MODE.DIGITAL_ALBUM;
+
+    let tasks = Array.isArray(j.tasks) ? j.tasks : [];
+    const tpl = TASK_TEMPLATES[templateKey(projectType, deliveryMode)];
+    if (tpl?.length) {
+      const byId = new Map(tpl.map((t) => [t.id, t]));
+      tasks = tasks.map((t) => {
+        const ref = byId.get(t.id);
+        return {
+          id: t.id,
+          title: t.title || ref?.title || "",
+          done: !!t.done,
+          date: t.date || "",
+          notes: t.notes || "",
+          choice: t.choice ?? (ref?.extraChoice ? "" : undefined),
+          hasDate: t.hasDate !== undefined ? !!t.hasDate : !!ref?.hasDate,
+          extraChoice: t.extraChoice !== undefined ? !!t.extraChoice : !!ref?.extraChoice,
+        };
+      });
+
+      const existing = new Set(tasks.map((x) => x.id));
+      for (const item of tpl) {
+        if (!existing.has(item.id)) {
+          tasks.push({
+            id: item.id,
+            title: item.title,
+            done: false,
+            date: "",
+            notes: "",
+            choice: item.extraChoice ? "" : undefined,
+            hasDate: !!item.hasDate,
+            extraChoice: !!item.extraChoice,
+          });
+        }
+      }
+    }
+
+    return { ...j, projectType, deliveryMode, tasks };
+  });
 }
 
 function loadJobs() {
@@ -169,26 +347,29 @@ function loadJobs() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
+    return normalizeLoadedJobs(Array.isArray(data) ? data : []);
   } catch {
     return [];
   }
 }
-
 function saveJobs(jobs) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
 }
-
 function exportJSON(jobs) {
-  const blob = new Blob([JSON.stringify(jobs, null, 2)], {
-    type: "application/json",
-  });
+  const blob = new Blob([JSON.stringify(jobs, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = `backup-checklist-${todayISO()}.json`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function labelProjectType(pt) {
+  return pt === PROJECT_TYPE.ENSAIO ? "Ensaio fotográfico" : "Evento";
+}
+function labelDeliveryMode(dm) {
+  return dm === DELIVERY_MODE.DIGITAL ? "Somente digital" : "Digital + álbum";
 }
 
 export default function Home() {
@@ -203,7 +384,8 @@ export default function Home() {
     client: "",
     event: "",
     eventDate: "",
-    deliveryFormat: "ÁLBUM / DIGITAL",
+    deliveryMode: DELIVERY_MODE.DIGITAL_ALBUM,
+    projectType: PROJECT_TYPE.EVENTO,
     dueDate: "",
   });
 
@@ -221,16 +403,13 @@ export default function Home() {
     const q = query.trim().toLowerCase();
     if (!q) return jobs;
     return jobs.filter((j) =>
-      [j.client, j.event, j.deliveryFormat].some((v) =>
-        String(v || "").toLowerCase().includes(q)
+      [j.client, j.event, labelProjectType(j.projectType), labelDeliveryMode(j.deliveryMode)].some(
+        (v) => String(v || "").toLowerCase().includes(q)
       )
     );
   }, [jobs, query]);
 
-  const active = useMemo(
-    () => jobs.find((j) => j.id === activeId) || null,
-    [jobs, activeId]
-  );
+  const active = useMemo(() => jobs.find((j) => j.id === activeId) || null, [jobs, activeId]);
 
   const stats = useMemo(() => {
     const s = { "Em andamento": 0, "Próximos 7 dias": 0, Atrasado: 0, Concluído: 0 };
@@ -248,28 +427,31 @@ export default function Home() {
       client,
       event,
       eventDate: newJob.eventDate,
-      deliveryFormat: newJob.deliveryFormat,
       dueDate: newJob.dueDate,
+      projectType: newJob.projectType,
+      deliveryMode: newJob.deliveryMode,
       createdAt: new Date().toISOString(),
-      tasks: makeDefaultTasks(),
+      tasks: makeTasks(newJob.projectType, newJob.deliveryMode),
     };
 
     setJobs((prev) => [project, ...prev]);
     setActiveId(project.id);
     setShowNew(false);
+
     setNewJob({
       client: "",
       event: "",
       eventDate: "",
-      deliveryFormat: "ÁLBUM / DIGITAL",
       dueDate: "",
+      projectType: PROJECT_TYPE.EVENTO,
+      deliveryMode: DELIVERY_MODE.DIGITAL_ALBUM,
     });
   }
 
   function updateActive(patch) {
     if (!active) return;
 
-    // Se mudar a data do evento, recalcula automaticamente 45 dias úteis
+    // recalcula prazo quando muda data do evento
     if (Object.prototype.hasOwnProperty.call(patch, "eventDate")) {
       const eventDate = patch.eventDate;
       patch = { ...patch, dueDate: eventDate ? addBusinessDaysISO(eventDate, 45) : "" };
@@ -278,15 +460,28 @@ export default function Home() {
     setJobs((prev) => prev.map((j) => (j.id === active.id ? { ...j, ...patch } : j)));
   }
 
+  // ✅ Troca de formato de entrega (e adapta o checklist)
+  function changeDeliveryMode(newMode) {
+    if (!active) return;
+    if (newMode === active.deliveryMode) return;
+
+    const newTasks = rebuildTasksForDeliveryChange(active.projectType, active.tasks, newMode);
+
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === active.id
+          ? { ...j, deliveryMode: newMode, tasks: newTasks }
+          : j
+      )
+    );
+  }
+
   function updateTask(taskId, patch) {
     if (!active) return;
     setJobs((prev) =>
       prev.map((j) => {
         if (j.id !== active.id) return j;
-        return {
-          ...j,
-          tasks: j.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
-        };
+        return { ...j, tasks: j.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)) };
       })
     );
   }
@@ -305,11 +500,10 @@ export default function Home() {
       try {
         const data = JSON.parse(String(reader.result || "[]"));
         if (!Array.isArray(data)) return;
-        setJobs(data);
-        setActiveId(data?.[0]?.id || null);
-      } catch {
-        // ignore
-      }
+        const normalized = normalizeLoadedJobs(data);
+        setJobs(normalized);
+        setActiveId(normalized?.[0]?.id || null);
+      } catch {}
     };
     reader.readAsText(file);
   }
@@ -323,9 +517,7 @@ export default function Home() {
         <header style={styles.header}>
           <div>
             <div style={styles.h1}>Checklist do Fluxo de Trabalho</div>
-            <div style={styles.sub}>
-              MVP single-user • salva no navegador • com backup JSON
-            </div>
+            <div style={styles.sub}>MVP single-user • salva no navegador • com backup JSON</div>
           </div>
 
           <div style={styles.headerBtns}>
@@ -340,7 +532,7 @@ export default function Home() {
 
         <div style={styles.grid}>
           {/* Sidebar */}
-          <aside>
+          <aside style={styles.sidebar}>
             <div style={styles.card}>
               <div style={styles.cardHeader}>
                 <input
@@ -361,30 +553,31 @@ export default function Home() {
                 {filtered.length === 0 ? (
                   <div style={styles.empty}>Nenhum projeto. Clique em “Novo Projeto”.</div>
                 ) : (
-                  filtered.map((p) => {
-                    const isActive = p.id === activeId;
-                    const prog = computeProgress(p.tasks);
-                    const st = jobStatus(p);
+                  filtered.map((j) => {
+                    const isActive = j.id === activeId;
+                    const p = computeProgress(j.tasks);
+                    const st = jobStatus(j);
 
                     return (
                       <button
-                        key={p.id}
-                        onClick={() => setActiveId(p.id)}
+                        key={j.id}
+                        onClick={() => setActiveId(j.id)}
                         style={{
                           ...styles.listItem,
                           background: isActive ? "rgba(255,255,255,0.06)" : "transparent",
                         }}
                       >
                         <div style={styles.listTop}>
-                          <div style={styles.listTitle}>{p.client}</div>
-                          <div style={styles.listRight}>{prog}%</div>
+                          <div style={styles.listTitle}>{j.client}</div>
+                          <div style={styles.listRight}>{p}%</div>
                         </div>
-                        <div style={styles.listSub}>{p.event}</div>
+                        <div style={styles.listSub}>{j.event}</div>
+
                         <div style={styles.listMeta}>
                           <span style={styles.pill}>{st}</span>
-                          <span style={styles.pill}>
-                            Prazo: {p.dueDate ? formatBR(p.dueDate) : "—"}
-                          </span>
+                          <span style={styles.pill}>{labelProjectType(j.projectType)}</span>
+                          <span style={styles.pill}>{labelDeliveryMode(j.deliveryMode)}</span>
+                          <span style={styles.pill}>Prazo: {j.dueDate ? formatBR(j.dueDate) : "—"}</span>
                         </div>
                       </button>
                     );
@@ -395,7 +588,7 @@ export default function Home() {
           </aside>
 
           {/* Main */}
-          <main>
+          <main style={styles.main}>
             <div style={styles.card}>
               {!active ? (
                 <div style={styles.emptyBig}>Selecione um projeto na lista.</div>
@@ -408,7 +601,8 @@ export default function Home() {
                       </div>
                       <div style={styles.mainMeta}>
                         <span style={styles.pill}>{status}</span>
-                        <span style={styles.pill}>{active.deliveryFormat}</span>
+                        <span style={styles.pill}>{labelProjectType(active.projectType)}</span>
+                        <span style={styles.pill}>{labelDeliveryMode(active.deliveryMode)}</span>
                         {active.eventDate ? (
                           <span style={styles.pill}>Evento: {formatBR(active.eventDate)}</span>
                         ) : null}
@@ -444,7 +638,7 @@ export default function Home() {
                     </div>
 
                     <div style={styles.field}>
-                      <label style={styles.label}>Evento</label>
+                      <label style={styles.label}>Evento / Ensaio</label>
                       <input
                         value={active.event}
                         onChange={(e) => updateActive({ event: e.target.value })}
@@ -463,7 +657,7 @@ export default function Home() {
                     </div>
 
                     <div style={styles.field}>
-                      <label style={styles.label}>Prazo final, auto 45 dias úteis</label>
+                      <label style={styles.label}>Prazo final (auto 45 dias úteis)</label>
                       <input
                         type="date"
                         value={active.dueDate || ""}
@@ -471,74 +665,97 @@ export default function Home() {
                         style={styles.input}
                       />
                     </div>
+
+                    {/* ✅ NOVO: formato de entrega editável (adapta checklist) */}
+                    <div style={styles.fieldWide}>
+                      <label style={styles.label}>Formato de entrega (pode alterar)</label>
+                      <div style={styles.inlineRadioWrap}>
+                        <label style={styles.inlineRadio}>
+                          <input
+                            type="radio"
+                            name="delivery_active"
+                            checked={active.deliveryMode === DELIVERY_MODE.DIGITAL}
+                            onChange={() => changeDeliveryMode(DELIVERY_MODE.DIGITAL)}
+                          />
+                          <span>Somente digital</span>
+                        </label>
+                        <label style={styles.inlineRadio}>
+                          <input
+                            type="radio"
+                            name="delivery_active"
+                            checked={active.deliveryMode === DELIVERY_MODE.DIGITAL_ALBUM}
+                            onChange={() => changeDeliveryMode(DELIVERY_MODE.DIGITAL_ALBUM)}
+                          />
+                          <span>Digital + álbum</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Tipo de projeto travado, só informativo */}
+                    <div style={styles.fieldWide}>
+                      <label style={styles.label}>Tipo de projeto (fixo)</label>
+                      <input value={labelProjectType(active.projectType)} readOnly style={styles.inputReadOnly} />
+                    </div>
                   </div>
 
-                  <div style={styles.taskHint}>
-                    Dica: tarefas com “data” registram quando algo foi feito.
-                  </div>
+                  <div style={styles.taskHint}>Dica: tarefas com “data” registram quando algo foi feito.</div>
 
                   <div style={{ padding: 18 }}>
-                    {active.tasks.map((t) => {
-                      const tpl = TEMPLATE_TASKS.find((x) => x.id === t.id);
-                      const hasDate = tpl?.hasDate;
-                      const extraChoice = tpl?.extraChoice;
+                    {active.tasks.map((t) => (
+                      <div key={t.id} style={styles.taskCard}>
+                        <div style={styles.taskTop}>
+                          <label style={styles.checkboxRow}>
+                            <input
+                              type="checkbox"
+                              checked={!!t.done}
+                              onChange={(e) => updateTask(t.id, { done: e.target.checked })}
+                            />
+                            <span style={{ ...styles.taskTitle, opacity: t.done ? 0.6 : 1 }}>
+                              {t.title}
+                            </span>
+                          </label>
+                        </div>
 
-                      return (
-                        <div key={t.id} style={styles.taskCard}>
-                          <div style={styles.taskTop}>
-                            <label style={styles.checkboxRow}>
+                        <div style={styles.taskGrid}>
+                          {t.hasDate ? (
+                            <div style={styles.field}>
+                              <label style={styles.label}>Data</label>
                               <input
-                                type="checkbox"
-                                checked={!!t.done}
-                                onChange={(e) => updateTask(t.id, { done: e.target.checked })}
-                              />
-                              <span style={{ ...styles.taskTitle, opacity: t.done ? 0.65 : 1 }}>
-                                {t.title}
-                              </span>
-                            </label>
-                          </div>
-
-                          <div style={styles.taskGrid}>
-                            {hasDate ? (
-                              <div style={styles.field}>
-                                <label style={styles.label}>Data</label>
-                                <input
-                                  type="date"
-                                  value={t.date || ""}
-                                  onChange={(e) => updateTask(t.id, { date: e.target.value })}
-                                  style={styles.input}
-                                />
-                              </div>
-                            ) : null}
-
-                            {extraChoice ? (
-                              <div style={styles.field}>
-                                <label style={styles.label}>Seleção</label>
-                                <select
-                                  value={t.choice || ""}
-                                  onChange={(e) => updateTask(t.id, { choice: e.target.value })}
-                                  style={styles.input}
-                                >
-                                  <option value="">Escolha…</option>
-                                  <option value="ONLINE">Online</option>
-                                  <option value="PRESENCIAL">Presencial</option>
-                                </select>
-                              </div>
-                            ) : null}
-
-                            <div style={styles.fieldWide}>
-                              <label style={styles.label}>Notas</label>
-                              <input
-                                value={t.notes || ""}
-                                onChange={(e) => updateTask(t.id, { notes: e.target.value })}
-                                placeholder="ex.: observações, encadernadora, número do pedido…"
+                                type="date"
+                                value={t.date || ""}
+                                onChange={(e) => updateTask(t.id, { date: e.target.value })}
                                 style={styles.input}
                               />
                             </div>
+                          ) : null}
+
+                          {t.extraChoice ? (
+                            <div style={styles.field}>
+                              <label style={styles.label}>Seleção</label>
+                              <select
+                                value={t.choice || ""}
+                                onChange={(e) => updateTask(t.id, { choice: e.target.value })}
+                                style={styles.input}
+                              >
+                                <option value="">Escolha…</option>
+                                <option value="ONLINE">Online</option>
+                                <option value="PRESENCIAL">Presencial</option>
+                              </select>
+                            </div>
+                          ) : null}
+
+                          <div style={styles.fieldWide}>
+                            <label style={styles.label}>Notas</label>
+                            <input
+                              value={t.notes || ""}
+                              onChange={(e) => updateTask(t.id, { notes: e.target.value })}
+                              placeholder="ex.: observações, encadernadora, número do pedido…"
+                              style={styles.input}
+                            />
                           </div>
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -551,10 +768,10 @@ export default function Home() {
         </footer>
       </div>
 
-      {/* Modal Novo Projeto */}
+      {/* Modal Novo Projeto (layout mockup) */}
       {showNew ? (
         <div style={styles.modalOverlay} onClick={() => setShowNew(false)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+          <div style={styles.modalWide} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <strong>Novo Projeto</strong>
               <button style={styles.btnGhost} onClick={() => setShowNew(false)}>
@@ -563,24 +780,24 @@ export default function Home() {
             </div>
 
             <div style={styles.modalBody}>
-              <div style={styles.fields}>
+              <div style={styles.modalGridTop}>
                 <div style={styles.field}>
                   <label style={styles.label}>Cliente</label>
                   <input
                     value={newJob.client}
                     onChange={(e) => setNewJob((s) => ({ ...s, client: e.target.value }))}
                     style={styles.input}
-                    placeholder="ex.: Carla"
+                    placeholder="Ex.: Rony & Natália, Juliana, etc."
                   />
                 </div>
 
                 <div style={styles.field}>
-                  <label style={styles.label}>Evento</label>
+                  <label style={styles.label}>Evento / Ensaio</label>
                   <input
                     value={newJob.event}
                     onChange={(e) => setNewJob((s) => ({ ...s, event: e.target.value }))}
                     style={styles.input}
-                    placeholder="ex.: Casamento Carla & Gilvan"
+                    placeholder="Ex.: Casamento, Ensaio de 15 anos, etc."
                   />
                 </div>
 
@@ -599,7 +816,7 @@ export default function Home() {
                 </div>
 
                 <div style={styles.field}>
-                  <label style={styles.label}>Prazo final, auto 45 dias úteis</label>
+                  <label style={styles.label}>Prazo final (auto 45 dias úteis)</label>
                   <input
                     type="date"
                     value={newJob.dueDate}
@@ -607,28 +824,71 @@ export default function Home() {
                     style={styles.input}
                   />
                 </div>
+              </div>
 
-                <div style={styles.fieldWide}>
-                  <label style={styles.label}>Formato de entrega</label>
-                  <select
-                    value={newJob.deliveryFormat}
-                    onChange={(e) => setNewJob((s) => ({ ...s, deliveryFormat: e.target.value }))}
-                    style={styles.input}
-                  >
-                    <option value="ÁLBUM / DIGITAL">ÁLBUM / DIGITAL</option>
-                    <option value="SOMENTE DIGITAL">SOMENTE DIGITAL</option>
-                    <option value="SOMENTE ÁLBUM">SOMENTE ÁLBUM</option>
-                  </select>
+              <div style={styles.modalGridBottom}>
+                <div style={styles.block}>
+                  <div style={styles.blockTitle}>Tipo de Projeto</div>
+                  <div style={styles.optionRow}>
+                    <label style={styles.optionLabel}>
+                      <input
+                        type="radio"
+                        name="projectType"
+                        checked={newJob.projectType === PROJECT_TYPE.EVENTO}
+                        onChange={() => setNewJob((s) => ({ ...s, projectType: PROJECT_TYPE.EVENTO }))}
+                      />
+                      <span style={styles.optionText}>Evento</span>
+                    </label>
+
+                    <label style={styles.optionLabel}>
+                      <input
+                        type="radio"
+                        name="projectType"
+                        checked={newJob.projectType === PROJECT_TYPE.ENSAIO}
+                        onChange={() => setNewJob((s) => ({ ...s, projectType: PROJECT_TYPE.ENSAIO }))}
+                      />
+                      <span style={styles.optionText}>Ensaio fotográfico</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={styles.block}>
+                  <div style={styles.blockTitle}>Formato de Entrega</div>
+                  <div style={styles.optionRow}>
+                    <label style={styles.optionLabel}>
+                      <input
+                        type="radio"
+                        name="deliveryMode"
+                        checked={newJob.deliveryMode === DELIVERY_MODE.DIGITAL}
+                        onChange={() => setNewJob((s) => ({ ...s, deliveryMode: DELIVERY_MODE.DIGITAL }))}
+                      />
+                      <span style={styles.optionText}>Somente digital</span>
+                    </label>
+
+                    <label style={styles.optionLabel}>
+                      <input
+                        type="radio"
+                        name="deliveryMode"
+                        checked={newJob.deliveryMode === DELIVERY_MODE.DIGITAL_ALBUM}
+                        onChange={() => setNewJob((s) => ({ ...s, deliveryMode: DELIVERY_MODE.DIGITAL_ALBUM }))}
+                      />
+                      <span style={styles.optionText}>Digital + álbum</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={styles.modalActionsRight}>
+                  <button style={styles.btnGhost} onClick={() => setShowNew(false)}>
+                    Cancelar
+                  </button>
+                  <button style={styles.btn} onClick={createProject}>
+                    Criar Projeto
+                  </button>
                 </div>
               </div>
 
-              <div style={styles.modalActions}>
-                <button style={styles.btnGhost} onClick={() => setShowNew(false)}>
-                  Cancelar
-                </button>
-                <button style={styles.btn} onClick={createProject}>
-                  Criar Projeto
-                </button>
+              <div style={styles.modalNote}>
+                O checklist será criado automaticamente de acordo com as opções escolhidas.
               </div>
             </div>
           </div>
@@ -690,11 +950,7 @@ const styles = {
     color: "#F2F2F2",
     fontFamily: "Calibri, 'Segoe UI', Arial, sans-serif",
   },
-  container: {
-    maxWidth: 1200,
-    margin: "0 auto",
-    padding: 18,
-  },
+  container: { maxWidth: 1200, margin: "0 auto", padding: 18 },
   header: {
     display: "flex",
     gap: 12,
@@ -707,11 +963,9 @@ const styles = {
   sub: { fontSize: 13, color: "rgba(255,255,255,0.7)" },
   headerBtns: { display: "flex", gap: 10, alignItems: "center" },
 
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "360px 1fr",
-    gap: 14,
-  },
+  grid: { display: "grid", gridTemplateColumns: "360px 1fr", gap: 14 },
+  sidebar: {},
+  main: {},
 
   card: {
     background: "#1F1F1F",
@@ -770,12 +1024,7 @@ const styles = {
   mainMeta: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 },
 
   progressWrap: { padding: "0 16px 16px" },
-  progressRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: 13,
-    marginTop: 12,
-  },
+  progressRow: { display: "flex", justifyContent: "space-between", fontSize: 13, marginTop: 12 },
   progressLabel: { color: "rgba(255,255,255,0.72)" },
   progressBar: {
     height: 10,
@@ -793,12 +1042,7 @@ const styles = {
     gap: 12,
   },
   field: { display: "flex", flexDirection: "column", gap: 6 },
-  fieldWide: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    gridColumn: "span 2",
-  },
+  fieldWide: { display: "flex", flexDirection: "column", gap: 6, gridColumn: "span 2" },
   label: { fontSize: 12, color: "rgba(255,255,255,0.70)" },
   input: {
     borderRadius: 12,
@@ -809,12 +1053,27 @@ const styles = {
     outline: "none",
     fontSize: 14,
   },
-
-  taskHint: {
-    padding: "0 16px 8px",
-    fontSize: 13,
-    color: "rgba(255,255,255,0.70)",
+  inputReadOnly: {
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(255,255,255,0.85)",
+    padding: "10px 12px",
+    outline: "none",
+    fontSize: 14,
   },
+  inlineRadioWrap: {
+    display: "flex",
+    gap: 18,
+    flexWrap: "wrap",
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.03)",
+  },
+  inlineRadio: { display: "flex", gap: 10, alignItems: "center", cursor: "pointer", fontWeight: 700, fontSize: 13, color: "rgba(255,255,255,0.85)" },
+
+  taskHint: { padding: "0 16px 8px", fontSize: 13, color: "rgba(255,255,255,0.70)" },
 
   taskCard: {
     border: "1px solid rgba(255,255,255,0.10)",
@@ -868,12 +1127,7 @@ const styles = {
   empty: { padding: 16, color: "rgba(255,255,255,0.70)", fontSize: 13 },
   emptyBig: { padding: 22, color: "rgba(255,255,255,0.70)", fontSize: 14 },
 
-  footer: {
-    marginTop: 16,
-    textAlign: "center",
-    fontSize: 12,
-    color: "rgba(255,255,255,0.55)",
-  },
+  footer: { marginTop: 16, textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.55)" },
 
   modalOverlay: {
     position: "fixed",
@@ -895,6 +1149,16 @@ const styles = {
     overflow: "hidden",
     color: "#F2F2F2",
   },
+  modalWide: {
+    width: "100%",
+    maxWidth: 1100,
+    background: "#1F1F1F",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.14)",
+    boxShadow: "0 18px 50px rgba(0,0,0,0.5)",
+    overflow: "hidden",
+    color: "#F2F2F2",
+  },
   modalHeader: {
     padding: 14,
     borderBottom: "1px solid rgba(255,255,255,0.08)",
@@ -903,7 +1167,34 @@ const styles = {
     alignItems: "center",
   },
   modalBody: { padding: 14 },
-  modalActions: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 },
+
+  modalGridTop: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gap: 12,
+    alignItems: "end",
+  },
+  modalGridBottom: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr auto",
+    gap: 18,
+    marginTop: 18,
+    alignItems: "end",
+  },
+
+  block: {
+    background: "rgba(255,255,255,0.03)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 14,
+    padding: 14,
+  },
+  blockTitle: { fontSize: 13, fontWeight: 800, marginBottom: 10, color: "rgba(255,255,255,0.85)" },
+  optionRow: { display: "flex", gap: 20, flexWrap: "wrap" },
+  optionLabel: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" },
+  optionText: { fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)" },
+
+  modalActionsRight: { display: "flex", gap: 10, justifyContent: "flex-end" },
+  modalNote: { marginTop: 12, fontSize: 12, color: "rgba(255,255,255,0.55)" },
 
   btnGhostLabel: {
     display: "inline-flex",
