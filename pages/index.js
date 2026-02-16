@@ -1,24 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-/**
- * Checklist do Fluxo de Trabalho – MVP single-user
- * - Next.js Pages Router (pages/index.js)
- * - Persistência: localStorage
- * - Dark mode (#272727) + fonte Calibri
- * - Prazo final automático: 45 dias úteis após a data do evento (seg-sex)
- * - Ignora feriados nacionais fixos (Brasil)
- * - 4 templates de checklist:
- *    1) Ensaio + Somente digital
- *    2) Evento + Somente digital
- *    3) Ensaio + Digital + álbum
- *    4) Evento + Digital + álbum
- * - Sem campo LINK: só NOTAS
- * - Depois de criado:
- *    - Tipo de projeto NÃO muda (travado)
- *    - Formato de entrega PODE mudar e o checklist se adapta automaticamente
- */
-
-const STORAGE_KEY = "eks_checklist_jobs_v4";
+const STORAGE_KEY = "eks_checklist_jobs_v5";
 
 // Feriados nacionais fixos (Brasil) – MM-DD
 const FIXED_HOLIDAYS_MMDD = [
@@ -81,7 +63,11 @@ const TASK_TEMPLATES = {
         "PREPAROU A ENTREGA (Gravar imagens em alta no pen drive, imprimir 3 fotos, cartão de agradecimento e feedback, mimos, etc.)",
     },
 
-    { id: "delivered", title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA", hasDate: true },
+    {
+      id: "delivered",
+      title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA",
+      hasDate: true,
+    },
   ],
 
   // Evento - somente digital
@@ -109,7 +95,11 @@ const TASK_TEMPLATES = {
         "PREPAROU A ENTREGA (Gravar imagens em alta no pen drive, imprimir 5 fotos, cartão de agradecimento e feedback, mimos, etc.)",
     },
 
-    { id: "delivered", title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA", hasDate: true },
+    {
+      id: "delivered",
+      title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA",
+      hasDate: true,
+    },
   ],
 
   // Ensaio - com álbum
@@ -138,12 +128,15 @@ const TASK_TEMPLATES = {
     },
 
     { id: "album_layout_sent", title: "DIAGRAMAR ÁLBUM E ENVIAR PARA APROVAÇÃO NO DIA", hasDate: true },
+
     { id: "album_approved", title: "CLIENTE APROVOU O ÁLBUM NO DIA", hasDate: true },
+
     { id: "album_review_images", title: "REVISAR AS IMAGENS DO ÁLBUM" },
 
     { id: "send_lowres_client", title: "ENVIAR IMAGENS EM BAIXA RESOLUÇÃO PARA O CLIENTE" },
 
     { id: "bindery_sent", title: "FOI ENVIADO PARA ENCADERNADORA NO DIA", hasDate: true },
+
     { id: "bindery_arrived", title: "CHEGOU DA ENCADERNADORA NO DIA", hasDate: true },
 
     {
@@ -174,7 +167,11 @@ const TASK_TEMPLATES = {
       hasDate: true,
     },
 
-    { id: "album_link_sent", title: "ENVIOU LINK PARA O CLIENTE ESCOLHER AS FOTOS DO ÁLBUM NO DIA", hasDate: true },
+    {
+      id: "album_link_sent",
+      title: "ENVIOU LINK PARA O CLIENTE ESCOLHER AS FOTOS DO ÁLBUM NO DIA",
+      hasDate: true,
+    },
 
     {
       id: "album_selected",
@@ -184,10 +181,13 @@ const TASK_TEMPLATES = {
     },
 
     { id: "layout_sent", title: "DIAGRAMOU E ENVIOU PARA O CLIENTE APROVAR NO DIA", hasDate: true },
+
     { id: "album_approved", title: "CLIENTE APROVOU O ÁLBUM NO DIA", hasDate: true },
+
     { id: "album_export", title: "REVISOU AS FOTOS E EXPORTOU O ÁLBUM" },
 
     { id: "bindery_sent", title: "ENVIOU PARA ENCADERNADORA NO DIA", hasDate: true },
+
     { id: "bindery_arrived", title: "CHEGOU DA ENCADERNADORA NO DIA", hasDate: true },
 
     {
@@ -203,61 +203,80 @@ const TASK_TEMPLATES = {
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
+
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
+
 function formatBR(iso) {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("pt-BR");
 }
+
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
+
 function mmdd(date) {
   return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
+
 function isFixedHoliday(dateObj) {
   return FIXED_HOLIDAYS_MMDD.includes(mmdd(dateObj));
 }
+
+function isBusinessDay(dateObj) {
+  const dow = dateObj.getDay(); // 0 dom, 6 sab
+  const isWeekend = dow === 0 || dow === 6;
+  return !isWeekend && !isFixedHoliday(dateObj);
+}
+
+// adiciona X dias úteis após data
 function addBusinessDaysISO(startISO, businessDays) {
   if (!startISO) return "";
   let d = new Date(startISO + "T00:00:00");
   let added = 0;
+
   while (added < businessDays) {
     d.setDate(d.getDate() + 1);
-    const dow = d.getDay();
-    const isWeekend = dow === 0 || dow === 6;
-    if (!isWeekend && !isFixedHoliday(d)) added++;
+    if (isBusinessDay(d)) added++;
   }
+
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
-function daysBetween(fromISO, toISO) {
+
+// conta dias úteis entre A e B (A -> B). Se B < A, retorna negativo
+function businessDaysBetween(fromISO, toISO) {
   if (!fromISO || !toISO) return null;
+
   const a = new Date(fromISO + "T00:00:00");
   const b = new Date(toISO + "T00:00:00");
-  return Math.round((b - a) / (1000 * 60 * 60 * 24));
+
+  const sign = b >= a ? 1 : -1;
+  let start = sign === 1 ? a : b;
+  let end = sign === 1 ? b : a;
+
+  let count = 0;
+  let d = new Date(start);
+  while (d < end) {
+    d.setDate(d.getDate() + 1);
+    if (d <= end && isBusinessDay(d)) count++;
+  }
+  return count * sign;
 }
+
 function computeProgress(tasks) {
   if (!tasks?.length) return 0;
   const done = tasks.filter((t) => t.done).length;
   return Math.round((done / tasks.length) * 100);
 }
-function jobStatus(job) {
-  const allDone = job?.tasks?.every((t) => t.done);
-  if (allDone) return "Concluído";
 
-  if (job?.dueDate) {
-    const diff = daysBetween(todayISO(), job.dueDate);
-    if (diff !== null && diff < 0) return "Atrasado";
-    if (diff !== null && diff <= 7) return "Próximos 7 dias";
-  }
-  return "Em andamento";
-}
 function templateKey(projectType, deliveryMode) {
   return `${projectType}__${deliveryMode}`;
 }
+
 function makeTasks(projectType, deliveryMode) {
   const tpl = TASK_TEMPLATES[templateKey(projectType, deliveryMode)] || [];
   return tpl.map((t) => ({
@@ -274,9 +293,9 @@ function makeTasks(projectType, deliveryMode) {
 
 /**
  * Rebuild de tasks quando muda o deliveryMode:
- * - preserva dados de tasks que existirem pelo mesmo id
- * - remove tasks que não existem no novo template
- * - adiciona tasks novas com default
+ * - preserva dados por id (done/date/notes/choice)
+ * - remove o que não existe no novo template
+ * - adiciona o que entrou
  */
 function rebuildTasksForDeliveryChange(projectType, fromTasks, newDeliveryMode) {
   const tpl = TASK_TEMPLATES[templateKey(projectType, newDeliveryMode)] || [];
@@ -288,13 +307,21 @@ function rebuildTasksForDeliveryChange(projectType, fromTasks, newDeliveryMode) 
       id: ref.id,
       title: ref.title,
       done: prev ? !!prev.done : false,
-      date: prev ? (prev.date || "") : "",
-      notes: prev ? (prev.notes || "") : "",
+      date: prev ? prev.date || "" : "",
+      notes: prev ? prev.notes || "" : "",
       choice: ref.extraChoice ? (prev?.choice || "") : undefined,
       hasDate: !!ref.hasDate,
       extraChoice: !!ref.extraChoice,
     };
   });
+}
+
+function labelProjectType(pt) {
+  return pt === PROJECT_TYPE.ENSAIO ? "Ensaio fotográfico" : "Evento";
+}
+
+function labelDeliveryMode(dm) {
+  return dm === DELIVERY_MODE.DIGITAL ? "Somente digital" : "Digital + álbum";
 }
 
 function normalizeLoadedJobs(rawJobs) {
@@ -305,6 +332,7 @@ function normalizeLoadedJobs(rawJobs) {
 
     let tasks = Array.isArray(j.tasks) ? j.tasks : [];
     const tpl = TASK_TEMPLATES[templateKey(projectType, deliveryMode)];
+
     if (tpl?.length) {
       const byId = new Map(tpl.map((t) => [t.id, t]));
       tasks = tasks.map((t) => {
@@ -338,7 +366,14 @@ function normalizeLoadedJobs(rawJobs) {
       }
     }
 
-    return { ...j, projectType, deliveryMode, tasks };
+    return {
+      ...j,
+      projectType,
+      deliveryMode,
+      tasks,
+      isCompleted: !!j.isCompleted,
+      completedAt: j.completedAt || "",
+    };
   });
 }
 
@@ -352,11 +387,15 @@ function loadJobs() {
     return [];
   }
 }
+
 function saveJobs(jobs) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
 }
+
 function exportJSON(jobs) {
-  const blob = new Blob([JSON.stringify(jobs, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(jobs, null, 2)], {
+    type: "application/json",
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -365,11 +404,62 @@ function exportJSON(jobs) {
   URL.revokeObjectURL(url);
 }
 
-function labelProjectType(pt) {
-  return pt === PROJECT_TYPE.ENSAIO ? "Ensaio fotográfico" : "Evento";
+function jobStatus(job) {
+  if (job.isCompleted) return "Finalizado";
+
+  // mantém seus status existentes
+  if (job?.dueDate) {
+    const remBiz = businessDaysBetween(todayISO(), job.dueDate);
+    if (remBiz !== null && remBiz < 0) return "Atrasado";
+    if (remBiz !== null && remBiz <= 7) return "Próximos 7 dias";
+  }
+  return "Em andamento";
 }
-function labelDeliveryMode(dm) {
-  return dm === DELIVERY_MODE.DIGITAL ? "Somente digital" : "Digital + álbum";
+
+// semáforo: verde (ok), amarelo (>30 dias úteis do evento), vermelho (<=7 dias úteis do prazo ou atrasado)
+function trafficTone(job) {
+  if (job.isCompleted) return "neutral";
+
+  const hasDue = !!job.dueDate;
+  const hasEvent = !!job.eventDate;
+
+  if (hasDue) {
+    const remBiz = businessDaysBetween(todayISO(), job.dueDate);
+    if (remBiz !== null && remBiz <= 7) return "red"; // inclui atrasado (negativo)
+  }
+
+  if (hasEvent) {
+    const elapsedBiz = businessDaysBetween(job.eventDate, todayISO());
+    if (elapsedBiz !== null && elapsedBiz > 30) return "yellow";
+  }
+
+  return "green";
+}
+
+function toneStyle(tone, active) {
+  const base = active ? 0.16 : 0.12;
+  if (tone === "green") {
+    return {
+      background: `rgba(96, 206, 128, ${base})`,
+      border: `1px solid rgba(96, 206, 128, 0.18)`,
+    };
+  }
+  if (tone === "yellow") {
+    return {
+      background: `rgba(255, 214, 102, ${base})`,
+      border: `1px solid rgba(255, 214, 102, 0.18)`,
+    };
+  }
+  if (tone === "red") {
+    return {
+      background: `rgba(255, 120, 120, ${base})`,
+      border: `1px solid rgba(255, 120, 120, 0.18)`,
+    };
+  }
+  return {
+    background: active ? "rgba(255,255,255,0.06)" : "transparent",
+    border: `1px solid rgba(255,255,255,0.06)`,
+  };
 }
 
 export default function Home() {
@@ -379,6 +469,9 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [showBackup, setShowBackup] = useState(false);
+
+  // “tela” (aba) da lista
+  const [view, setView] = useState("PENDENTES"); // PENDENTES | FINALIZADOS
 
   const [newJob, setNewJob] = useState({
     client: "",
@@ -392,30 +485,64 @@ export default function Home() {
   useEffect(() => {
     const loaded = loadJobs();
     setJobs(loaded);
-    setActiveId(loaded?.[0]?.id || null);
+
+    // escolhe um active compatível com a view
+    const firstPending = loaded.find((j) => !j.isCompleted);
+    const firstDone = loaded.find((j) => j.isCompleted);
+
+    setActiveId(firstPending?.id || firstDone?.id || null);
   }, []);
 
   useEffect(() => {
     saveJobs(jobs);
   }, [jobs]);
 
+  const pendingJobs = useMemo(() => jobs.filter((j) => !j.isCompleted), [jobs]);
+  const doneJobs = useMemo(() => jobs.filter((j) => j.isCompleted), [jobs]);
+
+  const listBase = view === "PENDENTES" ? pendingJobs : doneJobs;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return jobs;
-    return jobs.filter((j) =>
-      [j.client, j.event, labelProjectType(j.projectType), labelDeliveryMode(j.deliveryMode)].some(
-        (v) => String(v || "").toLowerCase().includes(q)
-      )
+    if (!q) return listBase;
+
+    return listBase.filter((j) =>
+      [
+        j.client,
+        j.event,
+        labelProjectType(j.projectType),
+        labelDeliveryMode(j.deliveryMode),
+      ].some((v) => String(v || "").toLowerCase().includes(q))
     );
-  }, [jobs, query]);
+  }, [listBase, query]);
 
   const active = useMemo(() => jobs.find((j) => j.id === activeId) || null, [jobs, activeId]);
 
+  // stats só faz sentido em pendentes, mas deixo bonito
   const stats = useMemo(() => {
-    const s = { "Em andamento": 0, "Próximos 7 dias": 0, Atrasado: 0, Concluído: 0 };
-    for (const j of jobs) s[jobStatus(j)]++;
+    const base = pendingJobs;
+    const s = { "Em andamento": 0, "Próximos 7 dias": 0, Atrasado: 0 };
+    for (const j of base) {
+      const st = jobStatus(j);
+      if (st === "Em andamento") s["Em andamento"]++;
+      if (st === "Próximos 7 dias") s["Próximos 7 dias"]++;
+      if (st === "Atrasado") s["Atrasado"]++;
+    }
     return s;
-  }, [jobs]);
+  }, [pendingJobs]);
+
+  // se trocar view e o active não pertence a ela, ajusta
+  useEffect(() => {
+    if (!active) return;
+
+    if (view === "PENDENTES" && active.isCompleted) {
+      setActiveId(pendingJobs?.[0]?.id || null);
+    }
+    if (view === "FINALIZADOS" && !active.isCompleted) {
+      setActiveId(doneJobs?.[0]?.id || null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   function createProject() {
     const client = newJob.client.trim();
@@ -432,9 +559,12 @@ export default function Home() {
       deliveryMode: newJob.deliveryMode,
       createdAt: new Date().toISOString(),
       tasks: makeTasks(newJob.projectType, newJob.deliveryMode),
+      isCompleted: false,
+      completedAt: "",
     };
 
     setJobs((prev) => [project, ...prev]);
+    setView("PENDENTES");
     setActiveId(project.id);
     setShowNew(false);
 
@@ -460,7 +590,7 @@ export default function Home() {
     setJobs((prev) => prev.map((j) => (j.id === active.id ? { ...j, ...patch } : j)));
   }
 
-  // ✅ Troca de formato de entrega (e adapta o checklist)
+  // troca de formato de entrega (adapta checklist)
   function changeDeliveryMode(newMode) {
     if (!active) return;
     if (newMode === active.deliveryMode) return;
@@ -481,7 +611,10 @@ export default function Home() {
     setJobs((prev) =>
       prev.map((j) => {
         if (j.id !== active.id) return j;
-        return { ...j, tasks: j.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)) };
+        return {
+          ...j,
+          tasks: j.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
+        };
       })
     );
   }
@@ -489,9 +622,27 @@ export default function Home() {
   function deleteProject(id) {
     setJobs((prev) => prev.filter((j) => j.id !== id));
     if (activeId === id) {
-      const next = jobs.find((j) => j.id !== id);
-      setActiveId(next?.id || null);
+      setActiveId(null);
     }
+  }
+
+  function finalizeProject() {
+    if (!active) return;
+
+    const now = todayISO();
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === active.id
+          ? { ...j, isCompleted: true, completedAt: now }
+          : j
+      )
+    );
+
+    // muda para finalizados e seleciona ele, ou o primeiro finalizado
+    setView("FINALIZADOS");
+    // mantém esse mesmo como ativo (agora ele está em finalizados)
+    // se preferir, dá para selecionar o próximo pendente automaticamente
+    setActiveId(active.id);
   }
 
   function importJSON(file) {
@@ -502,14 +653,22 @@ export default function Home() {
         if (!Array.isArray(data)) return;
         const normalized = normalizeLoadedJobs(data);
         setJobs(normalized);
-        setActiveId(normalized?.[0]?.id || null);
-      } catch {}
+
+        const firstPending = normalized.find((j) => !j.isCompleted);
+        const firstDone = normalized.find((j) => j.isCompleted);
+
+        setActiveId(firstPending?.id || firstDone?.id || null);
+      } catch {
+        // ignore
+      }
     };
     reader.readAsText(file);
   }
 
   const progress = active ? computeProgress(active.tasks) : 0;
   const status = active ? jobStatus(active) : "";
+
+  const sidebarTitle = view === "PENDENTES" ? "PROJETOS PENDENTES" : "PROJETOS FINALIZADOS";
 
   return (
     <div style={styles.page}>
@@ -532,31 +691,62 @@ export default function Home() {
 
         <div style={styles.grid}>
           {/* Sidebar */}
-          <aside style={styles.sidebar}>
+          <aside>
             <div style={styles.card}>
               <div style={styles.cardHeader}>
+                <div style={styles.sidebarTitleRow}>
+                  <div style={styles.sidebarTitle}>{sidebarTitle}</div>
+                </div>
+
+                <div style={styles.tabs}>
+                  <button
+                    style={{ ...styles.tab, ...(view === "PENDENTES" ? styles.tabActive : {}) }}
+                    onClick={() => setView("PENDENTES")}
+                  >
+                    Pendentes ({pendingJobs.length})
+                  </button>
+                  <button
+                    style={{ ...styles.tab, ...(view === "FINALIZADOS" ? styles.tabActive : {}) }}
+                    onClick={() => setView("FINALIZADOS")}
+                  >
+                    Finalizados ({doneJobs.length})
+                  </button>
+                </div>
+
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Buscar por cliente, evento, formato…"
                   style={styles.search}
                 />
-                <div style={styles.pills}>
-                  <span style={styles.pill}>Em andamento: {stats["Em andamento"]}</span>
-                  <span style={styles.pill}>7 dias: {stats["Próximos 7 dias"]}</span>
-                  <span style={styles.pill}>Atrasados: {stats["Atrasado"]}</span>
-                  <span style={styles.pill}>Concluídos: {stats["Concluído"]}</span>
-                </div>
+
+                {view === "PENDENTES" ? (
+                  <div style={styles.pills}>
+                    <span style={styles.pill}>Em andamento: {stats["Em andamento"]}</span>
+                    <span style={styles.pill}>7 dias: {stats["Próximos 7 dias"]}</span>
+                    <span style={styles.pill}>Atrasados: {stats["Atrasado"]}</span>
+                  </div>
+                ) : (
+                  <div style={styles.pills}>
+                    <span style={styles.pill}>Finalizados: {doneJobs.length}</span>
+                  </div>
+                )}
               </div>
 
               <div style={styles.list}>
                 {filtered.length === 0 ? (
-                  <div style={styles.empty}>Nenhum projeto. Clique em “Novo Projeto”.</div>
+                  <div style={styles.empty}>
+                    {view === "PENDENTES"
+                      ? "Nenhum projeto pendente."
+                      : "Nenhum projeto finalizado."}
+                  </div>
                 ) : (
                   filtered.map((j) => {
                     const isActive = j.id === activeId;
                     const p = computeProgress(j.tasks);
                     const st = jobStatus(j);
+                    const tone = trafficTone(j);
+                    const toneBox = toneStyle(tone, isActive);
 
                     return (
                       <button
@@ -564,21 +754,31 @@ export default function Home() {
                         onClick={() => setActiveId(j.id)}
                         style={{
                           ...styles.listItem,
-                          background: isActive ? "rgba(255,255,255,0.06)" : "transparent",
+                          ...toneBox,
+                          outline: "none",
                         }}
                       >
                         <div style={styles.listTop}>
-                          <div style={styles.listTitle}>{j.client}</div>
+                          <div style={styles.listTitle}>
+                            {j.client} - {j.event}
+                          </div>
                           <div style={styles.listRight}>{p}%</div>
                         </div>
-                        <div style={styles.listSub}>{j.event}</div>
 
                         <div style={styles.listMeta}>
                           <span style={styles.pill}>{st}</span>
                           <span style={styles.pill}>{labelProjectType(j.projectType)}</span>
                           <span style={styles.pill}>{labelDeliveryMode(j.deliveryMode)}</span>
-                          <span style={styles.pill}>Prazo: {j.dueDate ? formatBR(j.dueDate) : "—"}</span>
+                          <span style={styles.pill}>
+                            Prazo: {j.dueDate ? formatBR(j.dueDate) : "—"}
+                          </span>
                         </div>
+
+                        {j.isCompleted && j.completedAt ? (
+                          <div style={styles.doneLine}>
+                            Finalizado em {formatBR(j.completedAt)}
+                          </div>
+                        ) : null}
                       </button>
                     );
                   })
@@ -588,7 +788,7 @@ export default function Home() {
           </aside>
 
           {/* Main */}
-          <main style={styles.main}>
+          <main>
             <div style={styles.card}>
               {!active ? (
                 <div style={styles.emptyBig}>Selecione um projeto na lista.</div>
@@ -597,8 +797,9 @@ export default function Home() {
                   <div style={styles.mainHeader}>
                     <div>
                       <div style={styles.mainTitle}>
-                        {active.client} • {active.event}
+                        {active.client} - {active.event}
                       </div>
+
                       <div style={styles.mainMeta}>
                         <span style={styles.pill}>{status}</span>
                         <span style={styles.pill}>{labelProjectType(active.projectType)}</span>
@@ -608,6 +809,11 @@ export default function Home() {
                         ) : null}
                         {active.dueDate ? (
                           <span style={styles.pill}>Prazo final: {formatBR(active.dueDate)}</span>
+                        ) : null}
+                        {active.isCompleted && active.completedAt ? (
+                          <span style={styles.pill}>
+                            Finalizado em: {formatBR(active.completedAt)}
+                          </span>
                         ) : null}
                       </div>
                     </div>
@@ -666,14 +872,14 @@ export default function Home() {
                       />
                     </div>
 
-                    {/* ✅ NOVO: formato de entrega editável (adapta checklist) */}
+                    {/* Formato editável */}
                     <div style={styles.fieldWide}>
                       <label style={styles.label}>Formato de entrega (pode alterar)</label>
                       <div style={styles.inlineRadioWrap}>
                         <label style={styles.inlineRadio}>
                           <input
                             type="radio"
-                            name="delivery_active"
+                            name={`delivery_${active.id}`}
                             checked={active.deliveryMode === DELIVERY_MODE.DIGITAL}
                             onChange={() => changeDeliveryMode(DELIVERY_MODE.DIGITAL)}
                           />
@@ -682,7 +888,7 @@ export default function Home() {
                         <label style={styles.inlineRadio}>
                           <input
                             type="radio"
-                            name="delivery_active"
+                            name={`delivery_${active.id}`}
                             checked={active.deliveryMode === DELIVERY_MODE.DIGITAL_ALBUM}
                             onChange={() => changeDeliveryMode(DELIVERY_MODE.DIGITAL_ALBUM)}
                           />
@@ -691,14 +897,20 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Tipo de projeto travado, só informativo */}
+                    {/* Tipo fixo */}
                     <div style={styles.fieldWide}>
                       <label style={styles.label}>Tipo de projeto (fixo)</label>
-                      <input value={labelProjectType(active.projectType)} readOnly style={styles.inputReadOnly} />
+                      <input
+                        value={labelProjectType(active.projectType)}
+                        readOnly
+                        style={styles.inputReadOnly}
+                      />
                     </div>
                   </div>
 
-                  <div style={styles.taskHint}>Dica: tarefas com “data” registram quando algo foi feito.</div>
+                  <div style={styles.taskHint}>
+                    Dica: tarefas com “data” registram quando algo foi feito.
+                  </div>
 
                   <div style={{ padding: 18 }}>
                     {active.tasks.map((t) => (
@@ -756,6 +968,18 @@ export default function Home() {
                         </div>
                       </div>
                     ))}
+
+                    {/* ✅ Botão FINALIZAR no final do checklist (somente se ainda não finalizado) */}
+                    {!active.isCompleted ? (
+                      <div style={styles.finishWrap}>
+                        <button style={styles.btnFinish} onClick={finalizeProject}>
+                          FINALIZAR PROJETO
+                        </button>
+                        <div style={styles.finishHint}>
+                          Ao finalizar, este projeto sai da lista de pendentes e vai para projetos finalizados.
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -768,7 +992,7 @@ export default function Home() {
         </footer>
       </div>
 
-      {/* Modal Novo Projeto (layout mockup) */}
+      {/* Modal Novo Projeto */}
       {showNew ? (
         <div style={styles.modalOverlay} onClick={() => setShowNew(false)}>
           <div style={styles.modalWide} onClick={(e) => e.stopPropagation()}>
@@ -870,7 +1094,9 @@ export default function Home() {
                         type="radio"
                         name="deliveryMode"
                         checked={newJob.deliveryMode === DELIVERY_MODE.DIGITAL_ALBUM}
-                        onChange={() => setNewJob((s) => ({ ...s, deliveryMode: DELIVERY_MODE.DIGITAL_ALBUM }))}
+                        onChange={() =>
+                          setNewJob((s) => ({ ...s, deliveryMode: DELIVERY_MODE.DIGITAL_ALBUM }))
+                        }
                       />
                       <span style={styles.optionText}>Digital + álbum</span>
                     </label>
@@ -933,7 +1159,6 @@ export default function Home() {
 
               <div style={{ marginTop: 14, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
                 Se abrir em outro computador/celular, seus projetos não aparecem automaticamente (ainda).
-                A gente resolve isso na fase 2 com sincronização em nuvem.
               </div>
             </div>
           </div>
@@ -950,7 +1175,11 @@ const styles = {
     color: "#F2F2F2",
     fontFamily: "Calibri, 'Segoe UI', Arial, sans-serif",
   },
-  container: { maxWidth: 1200, margin: "0 auto", padding: 18 },
+  container: {
+    maxWidth: 1200,
+    margin: "0 auto",
+    padding: 18,
+  },
   header: {
     display: "flex",
     gap: 12,
@@ -963,9 +1192,11 @@ const styles = {
   sub: { fontSize: 13, color: "rgba(255,255,255,0.7)" },
   headerBtns: { display: "flex", gap: 10, alignItems: "center" },
 
-  grid: { display: "grid", gridTemplateColumns: "360px 1fr", gap: 14 },
-  sidebar: {},
-  main: {},
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "360px 1fr",
+    gap: 14,
+  },
 
   card: {
     background: "#1F1F1F",
@@ -974,7 +1205,36 @@ const styles = {
     overflow: "hidden",
     boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
   },
+
   cardHeader: { padding: 14, borderBottom: "1px solid rgba(255,255,255,0.08)" },
+
+  sidebarTitleRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  sidebarTitle: {
+    fontSize: 14,
+    letterSpacing: 0.6,
+    fontWeight: 900,
+    color: "rgba(255,255,255,0.82)",
+    marginBottom: 10,
+  },
+
+  tabs: { display: "flex", gap: 8, marginBottom: 10 },
+  tab: {
+    flex: 1,
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.03)",
+    color: "rgba(255,255,255,0.82)",
+    padding: "9px 10px",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 12,
+  },
+  tabActive: {
+    background: "rgba(255,255,255,0.10)",
+    border: "1px solid rgba(255,255,255,0.20)",
+    color: "#F2F2F2",
+  },
+
   search: {
     width: "100%",
     borderRadius: 12,
@@ -985,6 +1245,7 @@ const styles = {
     outline: "none",
     fontSize: 14,
   },
+
   pills: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 },
   pill: {
     fontSize: 12,
@@ -996,20 +1257,22 @@ const styles = {
   },
 
   list: { maxHeight: "70vh", overflow: "auto" },
+
   listItem: {
     width: "100%",
     textAlign: "left",
-    border: "none",
+    borderRadius: 14,
+    margin: 10,
     padding: 14,
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
     cursor: "pointer",
     color: "#F2F2F2",
   },
+
   listTop: { display: "flex", justifyContent: "space-between", gap: 10 },
-  listTitle: { fontWeight: 700, fontSize: 14 },
-  listRight: { fontWeight: 700, fontSize: 13, color: "rgba(255,255,255,0.8)" },
-  listSub: { marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.72)" },
+  listTitle: { fontWeight: 900, fontSize: 13, color: "rgba(255,255,255,0.92)" },
+  listRight: { fontWeight: 900, fontSize: 13, color: "rgba(255,255,255,0.80)" },
   listMeta: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 },
+  doneLine: { marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.68)" },
 
   mainHeader: {
     padding: 16,
@@ -1020,7 +1283,7 @@ const styles = {
     flexWrap: "wrap",
     alignItems: "flex-start",
   },
-  mainTitle: { fontSize: 18, fontWeight: 800 },
+  mainTitle: { fontSize: 18, fontWeight: 900 },
   mainMeta: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 },
 
   progressWrap: { padding: "0 16px 16px" },
@@ -1062,6 +1325,7 @@ const styles = {
     outline: "none",
     fontSize: 14,
   },
+
   inlineRadioWrap: {
     display: "flex",
     gap: 18,
@@ -1071,7 +1335,15 @@ const styles = {
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.03)",
   },
-  inlineRadio: { display: "flex", gap: 10, alignItems: "center", cursor: "pointer", fontWeight: 700, fontSize: 13, color: "rgba(255,255,255,0.85)" },
+  inlineRadio: {
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.85)",
+  },
 
   taskHint: { padding: "0 16px 8px", fontSize: 13, color: "rgba(255,255,255,0.70)" },
 
@@ -1084,7 +1356,7 @@ const styles = {
   },
   taskTop: { display: "flex", justifyContent: "space-between", gap: 10 },
   checkboxRow: { display: "flex", gap: 10, alignItems: "flex-start" },
-  taskTitle: { fontWeight: 700, fontSize: 13, lineHeight: 1.35 },
+  taskTitle: { fontWeight: 900, fontSize: 13, lineHeight: 1.35 },
 
   taskGrid: {
     display: "grid",
@@ -1093,6 +1365,27 @@ const styles = {
     marginTop: 12,
   },
 
+  finishWrap: {
+    marginTop: 18,
+    padding: 14,
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.03)",
+    textAlign: "center",
+  },
+  btnFinish: {
+    width: "100%",
+    background: "#F2F2F2",
+    color: "#111",
+    border: "none",
+    borderRadius: 12,
+    padding: "12px 14px",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 14,
+  },
+  finishHint: { marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.60)" },
+
   btn: {
     background: "#F2F2F2",
     color: "#111",
@@ -1100,7 +1393,7 @@ const styles = {
     borderRadius: 12,
     padding: "10px 14px",
     cursor: "pointer",
-    fontWeight: 800,
+    fontWeight: 900,
     fontSize: 14,
   },
   btnGhost: {
@@ -1110,7 +1403,7 @@ const styles = {
     borderRadius: 12,
     padding: "10px 14px",
     cursor: "pointer",
-    fontWeight: 800,
+    fontWeight: 900,
     fontSize: 14,
   },
   btnDanger: {
@@ -1188,10 +1481,10 @@ const styles = {
     borderRadius: 14,
     padding: 14,
   },
-  blockTitle: { fontSize: 13, fontWeight: 800, marginBottom: 10, color: "rgba(255,255,255,0.85)" },
+  blockTitle: { fontSize: 13, fontWeight: 900, marginBottom: 10, color: "rgba(255,255,255,0.85)" },
   optionRow: { display: "flex", gap: 20, flexWrap: "wrap" },
   optionLabel: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" },
-  optionText: { fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)" },
+  optionText: { fontSize: 13, fontWeight: 800, color: "rgba(255,255,255,0.85)" },
 
   modalActionsRight: { display: "flex", gap: 10, justifyContent: "flex-end" },
   modalNote: { marginTop: 12, fontSize: 12, color: "rgba(255,255,255,0.55)" },
