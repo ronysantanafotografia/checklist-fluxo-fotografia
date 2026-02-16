@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "eks_checklist_jobs_v5";
+const STORAGE_KEY = "eks_checklist_jobs_v6";
 
 // Feriados nacionais fixos (Brasil) – MM-DD
 const FIXED_HOLIDAYS_MMDD = [
@@ -233,7 +233,6 @@ function isBusinessDay(dateObj) {
   return !isWeekend && !isFixedHoliday(dateObj);
 }
 
-// adiciona X dias úteis após data
 function addBusinessDaysISO(startISO, businessDays) {
   if (!startISO) return "";
   let d = new Date(startISO + "T00:00:00");
@@ -247,7 +246,6 @@ function addBusinessDaysISO(startISO, businessDays) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-// conta dias úteis entre A e B (A -> B). Se B < A, retorna negativo
 function businessDaysBetween(fromISO, toISO) {
   if (!fromISO || !toISO) return null;
 
@@ -291,12 +289,6 @@ function makeTasks(projectType, deliveryMode) {
   }));
 }
 
-/**
- * Rebuild de tasks quando muda o deliveryMode:
- * - preserva dados por id (done/date/notes/choice)
- * - remove o que não existe no novo template
- * - adiciona o que entrou
- */
 function rebuildTasksForDeliveryChange(projectType, fromTasks, newDeliveryMode) {
   const tpl = TASK_TEMPLATES[templateKey(projectType, newDeliveryMode)] || [];
   const oldById = new Map((fromTasks || []).map((t) => [t.id, t]));
@@ -393,9 +385,7 @@ function saveJobs(jobs) {
 }
 
 function exportJSON(jobs) {
-  const blob = new Blob([JSON.stringify(jobs, null, 2)], {
-    type: "application/json",
-  });
+  const blob = new Blob([JSON.stringify(jobs, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -407,7 +397,6 @@ function exportJSON(jobs) {
 function jobStatus(job) {
   if (job.isCompleted) return "Finalizado";
 
-  // mantém seus status existentes
   if (job?.dueDate) {
     const remBiz = businessDaysBetween(todayISO(), job.dueDate);
     if (remBiz !== null && remBiz < 0) return "Atrasado";
@@ -416,19 +405,15 @@ function jobStatus(job) {
   return "Em andamento";
 }
 
-// semáforo: verde (ok), amarelo (>30 dias úteis do evento), vermelho (<=7 dias úteis do prazo ou atrasado)
 function trafficTone(job) {
   if (job.isCompleted) return "neutral";
 
-  const hasDue = !!job.dueDate;
-  const hasEvent = !!job.eventDate;
-
-  if (hasDue) {
+  if (job?.dueDate) {
     const remBiz = businessDaysBetween(todayISO(), job.dueDate);
-    if (remBiz !== null && remBiz <= 7) return "red"; // inclui atrasado (negativo)
+    if (remBiz !== null && remBiz <= 7) return "red";
   }
 
-  if (hasEvent) {
+  if (job?.eventDate) {
     const elapsedBiz = businessDaysBetween(job.eventDate, todayISO());
     if (elapsedBiz !== null && elapsedBiz > 30) return "yellow";
   }
@@ -470,7 +455,6 @@ export default function Home() {
   const [showNew, setShowNew] = useState(false);
   const [showBackup, setShowBackup] = useState(false);
 
-  // “tela” (aba) da lista
   const [view, setView] = useState("PENDENTES"); // PENDENTES | FINALIZADOS
 
   const [newJob, setNewJob] = useState({
@@ -486,7 +470,6 @@ export default function Home() {
     const loaded = loadJobs();
     setJobs(loaded);
 
-    // escolhe um active compatível com a view
     const firstPending = loaded.find((j) => !j.isCompleted);
     const firstDone = loaded.find((j) => j.isCompleted);
 
@@ -507,18 +490,14 @@ export default function Home() {
     if (!q) return listBase;
 
     return listBase.filter((j) =>
-      [
-        j.client,
-        j.event,
-        labelProjectType(j.projectType),
-        labelDeliveryMode(j.deliveryMode),
-      ].some((v) => String(v || "").toLowerCase().includes(q))
+      [j.client, j.event, labelProjectType(j.projectType), labelDeliveryMode(j.deliveryMode)].some(
+        (v) => String(v || "").toLowerCase().includes(q)
+      )
     );
   }, [listBase, query]);
 
   const active = useMemo(() => jobs.find((j) => j.id === activeId) || null, [jobs, activeId]);
 
-  // stats só faz sentido em pendentes, mas deixo bonito
   const stats = useMemo(() => {
     const base = pendingJobs;
     const s = { "Em andamento": 0, "Próximos 7 dias": 0, Atrasado: 0 };
@@ -531,7 +510,6 @@ export default function Home() {
     return s;
   }, [pendingJobs]);
 
-  // se trocar view e o active não pertence a ela, ajusta
   useEffect(() => {
     if (!active) return;
 
@@ -581,7 +559,6 @@ export default function Home() {
   function updateActive(patch) {
     if (!active) return;
 
-    // recalcula prazo quando muda data do evento
     if (Object.prototype.hasOwnProperty.call(patch, "eventDate")) {
       const eventDate = patch.eventDate;
       patch = { ...patch, dueDate: eventDate ? addBusinessDaysISO(eventDate, 45) : "" };
@@ -590,7 +567,6 @@ export default function Home() {
     setJobs((prev) => prev.map((j) => (j.id === active.id ? { ...j, ...patch } : j)));
   }
 
-  // troca de formato de entrega (adapta checklist)
   function changeDeliveryMode(newMode) {
     if (!active) return;
     if (newMode === active.deliveryMode) return;
@@ -598,11 +574,7 @@ export default function Home() {
     const newTasks = rebuildTasksForDeliveryChange(active.projectType, active.tasks, newMode);
 
     setJobs((prev) =>
-      prev.map((j) =>
-        j.id === active.id
-          ? { ...j, deliveryMode: newMode, tasks: newTasks }
-          : j
-      )
+      prev.map((j) => (j.id === active.id ? { ...j, deliveryMode: newMode, tasks: newTasks } : j))
     );
   }
 
@@ -611,37 +583,38 @@ export default function Home() {
     setJobs((prev) =>
       prev.map((j) => {
         if (j.id !== active.id) return j;
-        return {
-          ...j,
-          tasks: j.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
-        };
+        return { ...j, tasks: j.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)) };
       })
     );
   }
 
   function deleteProject(id) {
     setJobs((prev) => prev.filter((j) => j.id !== id));
-    if (activeId === id) {
-      setActiveId(null);
-    }
+    if (activeId === id) setActiveId(null);
   }
 
   function finalizeProject() {
     if (!active) return;
-
     const now = todayISO();
+
+    setJobs((prev) =>
+      prev.map((j) => (j.id === active.id ? { ...j, isCompleted: true, completedAt: now } : j))
+    );
+
+    setView("FINALIZADOS");
+    setActiveId(active.id);
+  }
+
+  // ✅ NOVO: reabrir projeto
+  function reopenProject() {
+    if (!active) return;
     setJobs((prev) =>
       prev.map((j) =>
-        j.id === active.id
-          ? { ...j, isCompleted: true, completedAt: now }
-          : j
+        j.id === active.id ? { ...j, isCompleted: false, completedAt: "" } : j
       )
     );
 
-    // muda para finalizados e seleciona ele, ou o primeiro finalizado
-    setView("FINALIZADOS");
-    // mantém esse mesmo como ativo (agora ele está em finalizados)
-    // se preferir, dá para selecionar o próximo pendente automaticamente
+    setView("PENDENTES");
     setActiveId(active.id);
   }
 
@@ -658,9 +631,7 @@ export default function Home() {
         const firstDone = normalized.find((j) => j.isCompleted);
 
         setActiveId(firstPending?.id || firstDone?.id || null);
-      } catch {
-        // ignore
-      }
+      } catch {}
     };
     reader.readAsText(file);
   }
@@ -736,9 +707,7 @@ export default function Home() {
               <div style={styles.list}>
                 {filtered.length === 0 ? (
                   <div style={styles.empty}>
-                    {view === "PENDENTES"
-                      ? "Nenhum projeto pendente."
-                      : "Nenhum projeto finalizado."}
+                    {view === "PENDENTES" ? "Nenhum projeto pendente." : "Nenhum projeto finalizado."}
                   </div>
                 ) : (
                   filtered.map((j) => {
@@ -775,9 +744,7 @@ export default function Home() {
                         </div>
 
                         {j.isCompleted && j.completedAt ? (
-                          <div style={styles.doneLine}>
-                            Finalizado em {formatBR(j.completedAt)}
-                          </div>
+                          <div style={styles.doneLine}>Finalizado em {formatBR(j.completedAt)}</div>
                         ) : null}
                       </button>
                     );
@@ -818,9 +785,18 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <button style={styles.btnDanger} onClick={() => deleteProject(active.id)}>
-                      Excluir
-                    </button>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      {/* ✅ Botão reabrir (só em finalizados) */}
+                      {active.isCompleted ? (
+                        <button style={styles.btnGhost} onClick={reopenProject}>
+                          Reabrir Projeto
+                        </button>
+                      ) : null}
+
+                      <button style={styles.btnDanger} onClick={() => deleteProject(active.id)}>
+                        Excluir
+                      </button>
+                    </div>
                   </div>
 
                   <div style={styles.progressWrap}>
@@ -840,6 +816,7 @@ export default function Home() {
                         value={active.client}
                         onChange={(e) => updateActive({ client: e.target.value })}
                         style={styles.input}
+                        disabled={active.isCompleted}
                       />
                     </div>
 
@@ -849,6 +826,7 @@ export default function Home() {
                         value={active.event}
                         onChange={(e) => updateActive({ event: e.target.value })}
                         style={styles.input}
+                        disabled={active.isCompleted}
                       />
                     </div>
 
@@ -859,6 +837,7 @@ export default function Home() {
                         value={active.eventDate || ""}
                         onChange={(e) => updateActive({ eventDate: e.target.value })}
                         style={styles.input}
+                        disabled={active.isCompleted}
                       />
                     </div>
 
@@ -869,10 +848,10 @@ export default function Home() {
                         value={active.dueDate || ""}
                         onChange={(e) => updateActive({ dueDate: e.target.value })}
                         style={styles.input}
+                        disabled={active.isCompleted}
                       />
                     </div>
 
-                    {/* Formato editável */}
                     <div style={styles.fieldWide}>
                       <label style={styles.label}>Formato de entrega (pode alterar)</label>
                       <div style={styles.inlineRadioWrap}>
@@ -882,6 +861,7 @@ export default function Home() {
                             name={`delivery_${active.id}`}
                             checked={active.deliveryMode === DELIVERY_MODE.DIGITAL}
                             onChange={() => changeDeliveryMode(DELIVERY_MODE.DIGITAL)}
+                            disabled={active.isCompleted}
                           />
                           <span>Somente digital</span>
                         </label>
@@ -891,26 +871,20 @@ export default function Home() {
                             name={`delivery_${active.id}`}
                             checked={active.deliveryMode === DELIVERY_MODE.DIGITAL_ALBUM}
                             onChange={() => changeDeliveryMode(DELIVERY_MODE.DIGITAL_ALBUM)}
+                            disabled={active.isCompleted}
                           />
                           <span>Digital + álbum</span>
                         </label>
                       </div>
                     </div>
 
-                    {/* Tipo fixo */}
                     <div style={styles.fieldWide}>
                       <label style={styles.label}>Tipo de projeto (fixo)</label>
-                      <input
-                        value={labelProjectType(active.projectType)}
-                        readOnly
-                        style={styles.inputReadOnly}
-                      />
+                      <input value={labelProjectType(active.projectType)} readOnly style={styles.inputReadOnly} />
                     </div>
                   </div>
 
-                  <div style={styles.taskHint}>
-                    Dica: tarefas com “data” registram quando algo foi feito.
-                  </div>
+                  <div style={styles.taskHint}>Dica: tarefas com “data” registram quando algo foi feito.</div>
 
                   <div style={{ padding: 18 }}>
                     {active.tasks.map((t) => (
@@ -921,6 +895,7 @@ export default function Home() {
                               type="checkbox"
                               checked={!!t.done}
                               onChange={(e) => updateTask(t.id, { done: e.target.checked })}
+                              disabled={active.isCompleted}
                             />
                             <span style={{ ...styles.taskTitle, opacity: t.done ? 0.6 : 1 }}>
                               {t.title}
@@ -937,6 +912,7 @@ export default function Home() {
                                 value={t.date || ""}
                                 onChange={(e) => updateTask(t.id, { date: e.target.value })}
                                 style={styles.input}
+                                disabled={active.isCompleted}
                               />
                             </div>
                           ) : null}
@@ -948,6 +924,7 @@ export default function Home() {
                                 value={t.choice || ""}
                                 onChange={(e) => updateTask(t.id, { choice: e.target.value })}
                                 style={styles.input}
+                                disabled={active.isCompleted}
                               >
                                 <option value="">Escolha…</option>
                                 <option value="ONLINE">Online</option>
@@ -963,13 +940,13 @@ export default function Home() {
                               onChange={(e) => updateTask(t.id, { notes: e.target.value })}
                               placeholder="ex.: observações, encadernadora, número do pedido…"
                               style={styles.input}
+                              disabled={active.isCompleted}
                             />
                           </div>
                         </div>
                       </div>
                     ))}
 
-                    {/* ✅ Botão FINALIZAR no final do checklist (somente se ainda não finalizado) */}
                     {!active.isCompleted ? (
                       <div style={styles.finishWrap}>
                         <button style={styles.btnFinish} onClick={finalizeProject}>
@@ -1094,9 +1071,7 @@ export default function Home() {
                         type="radio"
                         name="deliveryMode"
                         checked={newJob.deliveryMode === DELIVERY_MODE.DIGITAL_ALBUM}
-                        onChange={() =>
-                          setNewJob((s) => ({ ...s, deliveryMode: DELIVERY_MODE.DIGITAL_ALBUM }))
-                        }
+                        onChange={() => setNewJob((s) => ({ ...s, deliveryMode: DELIVERY_MODE.DIGITAL_ALBUM }))}
                       />
                       <span style={styles.optionText}>Digital + álbum</span>
                     </label>
@@ -1175,11 +1150,7 @@ const styles = {
     color: "#F2F2F2",
     fontFamily: "Calibri, 'Segoe UI', Arial, sans-serif",
   },
-  container: {
-    maxWidth: 1200,
-    margin: "0 auto",
-    padding: 18,
-  },
+  container: { maxWidth: 1200, margin: "0 auto", padding: 18 },
   header: {
     display: "flex",
     gap: 12,
@@ -1192,11 +1163,7 @@ const styles = {
   sub: { fontSize: 13, color: "rgba(255,255,255,0.7)" },
   headerBtns: { display: "flex", gap: 10, alignItems: "center" },
 
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "360px 1fr",
-    gap: 14,
-  },
+  grid: { display: "grid", gridTemplateColumns: "360px 1fr", gap: 14 },
 
   card: {
     background: "#1F1F1F",
@@ -1205,7 +1172,6 @@ const styles = {
     overflow: "hidden",
     boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
   },
-
   cardHeader: { padding: 14, borderBottom: "1px solid rgba(255,255,255,0.08)" },
 
   sidebarTitleRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
