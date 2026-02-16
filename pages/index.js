@@ -1,65 +1,87 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 /**
- * MVP – Checklist de Fluxo de Trabalho (single-user)
- * - Next.js Pages Router (pages/index.js)
+ * Checklist do Fluxo de Trabalho – MVP single-user
+ * - Next.js (pages/index.js)
  * - Persistência: localStorage
- * - Tema escuro
- * - Prazo final automático: 45 dias úteis após a data do evento
+ * - Dark mode (#272727)
+ * - Fonte: Calibri (fallbacks)
+ * - Prazo final automático: 45 dias úteis após data do evento
+ * - Dias úteis: seg-sex + ignora feriados nacionais fixos (Brasil)
+ * - Tarefas: checkbox + (data quando existir) + NOTAS (sempre)
+ * - Sem campo Link
  */
 
-const STORAGE_KEY = "eks_checklist_jobs_v1";
+const STORAGE_KEY = "eks_checklist_jobs_v2";
+
+// Feriados nacionais fixos (Brasil) – MM-DD
+const FIXED_HOLIDAYS_MMDD = [
+  "01-01", // Confraternização Universal
+  "04-21", // Tiradentes
+  "05-01", // Dia do Trabalho
+  "09-07", // Independência
+  "10-12", // N. Sra. Aparecida
+  "11-02", // Finados
+  "11-15", // Proclamação da República
+  "12-25", // Natal
+];
 
 const TEMPLATE_TASKS = [
   { id: "backup", title: "FAZER BACKUP", hasDate: false },
   { id: "blog_50", title: "ESCOLHER 50 FOTOS PARA O BLOG", hasDate: false },
   { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
+
   { id: "filter_1", title: "PRIMEIRO FILTRO", hasDate: false },
   { id: "filter_2", title: "SEGUNDO FILTRO", hasDate: false },
   { id: "filter_final", title: "FILTRO FINAL", hasDate: false },
+
   { id: "treat_all", title: "TRATAMENTO DE TODAS AS IMAGENS", hasDate: false },
+
   {
     id: "gallery_sent",
     title:
       "REVISOU E EXPORTOU AS IMAGENS PARA A GALERIA ON-LINE, ENVIOU PARA O CLIENTE",
     hasDate: true,
   },
+
   {
     id: "album_link_sent",
     title: "ENVIOU LINK PARA O CLIENTE ESCOLHER AS FOTOS DO ÁLBUM NO DIA",
     hasDate: true,
   },
+
   {
     id: "album_selected",
     title: "CLIENTE SELECIONOU AS FOTOS DO ÁLBUM NA DATA",
     hasDate: true,
-    extraChoice: true,
+    extraChoice: true, // ONLINE/PRESENCIAL
   },
+
   {
     id: "layout_sent",
     title: "DIAGRAMOU E ENVIOU PARA O CLIENTE APROVAR NO DIA",
     hasDate: true,
   },
+
   { id: "album_approved", title: "CLIENTE APROVOU O ÁLBUM NO DIA", hasDate: true },
   { id: "album_export", title: "REVISOU AS FOTOS E EXPORTOU O ÁLBUM", hasDate: false },
+
   { id: "bindery_sent", title: "ENVIOU PARA ENCADERNADORA NO DIA", hasDate: true },
   { id: "bindery_arrived", title: "CHEGOU DA ENCADERNADORA NO DIA", hasDate: true },
+
   {
     id: "delivery_prep",
     title:
       "PREPAROU A ENTREGA (Gravar imagens em alta no pen drive, imprimir 5 fotos, cartão de agradecimento e feedback, mimos, etc.)",
     hasDate: false,
   },
+
   {
     id: "delivered",
     title: "ENTREGOU / INFORMOU PARA O CLIENTE QUE FOI FINALIZADO NO DIA",
     hasDate: true,
   },
 ];
-
-function uid() {
-  return Math.random().toString(16).slice(2) + Date.now().toString(16);
-}
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -71,9 +93,39 @@ function todayISO() {
 }
 
 function formatBR(iso) {
-  if (!iso) return "";
+  if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("pt-BR");
+}
+
+function uid() {
+  return Math.random().toString(16).slice(2) + Date.now().toString(16);
+}
+
+function mmdd(date) {
+  return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function isFixedHoliday(dateObj) {
+  return FIXED_HOLIDAYS_MMDD.includes(mmdd(dateObj));
+}
+
+function addBusinessDaysISO(startISO, businessDays) {
+  if (!startISO) return "";
+  let d = new Date(startISO + "T00:00:00");
+  let added = 0;
+
+  while (added < businessDays) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay(); // 0 dom, 6 sab
+    const isWeekend = dow === 0 || dow === 6;
+
+    if (!isWeekend && !isFixedHoliday(d)) {
+      added++;
+    }
+  }
+
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 function daysBetween(fromISO, toISO) {
@@ -81,46 +133,6 @@ function daysBetween(fromISO, toISO) {
   const a = new Date(fromISO + "T00:00:00");
   const b = new Date(toISO + "T00:00:00");
   return Math.round((b - a) / (1000 * 60 * 60 * 24));
-}
-
-function addBusinessDaysISO(startISO, businessDays) {
-  if (!startISO) return "";
-  let d = new Date(startISO + "T00:00:00");
-  let added = 0;
-  while (added < businessDays) {
-    d.setDate(d.getDate() + 1);
-    const day = d.getDay();
-    // 0 = domingo, 6 = sábado
-    if (day !== 0 && day !== 6) added++;
-  }
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function loadJobs() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveJobs(jobs) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
-}
-
-function makeDefaultTasks() {
-  return TEMPLATE_TASKS.map((t) => ({
-    id: t.id,
-    title: t.title,
-    done: false,
-    date: "",
-    link: "",
-    notes: "",
-    choice: t.extraChoice ? "" : undefined,
-  }));
 }
 
 function computeProgress(tasks) {
@@ -141,6 +153,32 @@ function jobStatus(job) {
   return "Em andamento";
 }
 
+function makeDefaultTasks() {
+  return TEMPLATE_TASKS.map((tpl) => ({
+    id: tpl.id,
+    title: tpl.title,
+    done: false,
+    date: "",
+    notes: "",
+    choice: tpl.extraChoice ? "" : undefined,
+  }));
+}
+
+function loadJobs() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveJobs(jobs) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+}
+
 function exportJSON(jobs) {
   const blob = new Blob([JSON.stringify(jobs, null, 2)], {
     type: "application/json",
@@ -156,7 +194,10 @@ function exportJSON(jobs) {
 export default function Home() {
   const [jobs, setJobs] = useState([]);
   const [activeId, setActiveId] = useState(null);
+
   const [query, setQuery] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [showBackup, setShowBackup] = useState(false);
 
   const [newJob, setNewJob] = useState({
     client: "",
@@ -165,9 +206,6 @@ export default function Home() {
     deliveryFormat: "ÁLBUM / DIGITAL",
     dueDate: "",
   });
-
-  const [showNew, setShowNew] = useState(false);
-  const [showBackup, setShowBackup] = useState(false);
 
   useEffect(() => {
     const loaded = loadJobs();
@@ -200,12 +238,12 @@ export default function Home() {
     return s;
   }, [jobs]);
 
-  function createJob() {
+  function createProject() {
     const client = newJob.client.trim();
     const event = newJob.event.trim();
     if (!client || !event) return;
 
-    const job = {
+    const project = {
       id: uid(),
       client,
       event,
@@ -216,8 +254,8 @@ export default function Home() {
       tasks: makeDefaultTasks(),
     };
 
-    setJobs((prev) => [job, ...prev]);
-    setActiveId(job.id);
+    setJobs((prev) => [project, ...prev]);
+    setActiveId(project.id);
     setShowNew(false);
     setNewJob({
       client: "",
@@ -231,11 +269,10 @@ export default function Home() {
   function updateActive(patch) {
     if (!active) return;
 
-    // Se o usuário alterar a data do evento, recalcula automaticamente o prazo final (45 dias úteis).
+    // Se mudar a data do evento, recalcula automaticamente 45 dias úteis
     if (Object.prototype.hasOwnProperty.call(patch, "eventDate")) {
       const eventDate = patch.eventDate;
-      const computedDue = eventDate ? addBusinessDaysISO(eventDate, 45) : "";
-      patch = { ...patch, dueDate: computedDue };
+      patch = { ...patch, dueDate: eventDate ? addBusinessDaysISO(eventDate, 45) : "" };
     }
 
     setJobs((prev) => prev.map((j) => (j.id === active.id ? { ...j, ...patch } : j)));
@@ -254,7 +291,7 @@ export default function Home() {
     );
   }
 
-  function deleteJob(id) {
+  function deleteProject(id) {
     setJobs((prev) => prev.filter((j) => j.id !== id));
     if (activeId === id) {
       const next = jobs.find((j) => j.id !== id);
@@ -286,7 +323,9 @@ export default function Home() {
         <header style={styles.header}>
           <div>
             <div style={styles.h1}>Checklist do Fluxo de Trabalho</div>
-            <div style={styles.sub}>MVP single-user • salva no navegador • com backup JSON</div>
+            <div style={styles.sub}>
+              MVP single-user • salva no navegador • com backup JSON
+            </div>
           </div>
 
           <div style={styles.headerBtns}>
@@ -300,7 +339,8 @@ export default function Home() {
         </header>
 
         <div style={styles.grid}>
-          <aside style={styles.sidebar}>
+          {/* Sidebar */}
+          <aside>
             <div style={styles.card}>
               <div style={styles.cardHeader}>
                 <input
@@ -321,29 +361,29 @@ export default function Home() {
                 {filtered.length === 0 ? (
                   <div style={styles.empty}>Nenhum projeto. Clique em “Novo Projeto”.</div>
                 ) : (
-                  filtered.map((j) => {
-                    const isActive = j.id === activeId;
-                    const p = computeProgress(j.tasks);
-                    const st = jobStatus(j);
+                  filtered.map((p) => {
+                    const isActive = p.id === activeId;
+                    const prog = computeProgress(p.tasks);
+                    const st = jobStatus(p);
 
                     return (
                       <button
-                        key={j.id}
-                        onClick={() => setActiveId(j.id)}
+                        key={p.id}
+                        onClick={() => setActiveId(p.id)}
                         style={{
                           ...styles.listItem,
                           background: isActive ? "rgba(255,255,255,0.06)" : "transparent",
                         }}
                       >
                         <div style={styles.listTop}>
-                          <div style={styles.listTitle}>{j.client}</div>
-                          <div style={styles.listRight}>{p}%</div>
+                          <div style={styles.listTitle}>{p.client}</div>
+                          <div style={styles.listRight}>{prog}%</div>
                         </div>
-                        <div style={styles.listSub}>{j.event}</div>
+                        <div style={styles.listSub}>{p.event}</div>
                         <div style={styles.listMeta}>
                           <span style={styles.pill}>{st}</span>
                           <span style={styles.pill}>
-                            Prazo: {j.dueDate ? formatBR(j.dueDate) : "—"}
+                            Prazo: {p.dueDate ? formatBR(p.dueDate) : "—"}
                           </span>
                         </div>
                       </button>
@@ -354,7 +394,8 @@ export default function Home() {
             </div>
           </aside>
 
-          <main style={styles.main}>
+          {/* Main */}
+          <main>
             <div style={styles.card}>
               {!active ? (
                 <div style={styles.emptyBig}>Selecione um projeto na lista.</div>
@@ -377,7 +418,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <button style={styles.btnDanger} onClick={() => deleteJob(active.id)}>
+                    <button style={styles.btnDanger} onClick={() => deleteProject(active.id)}>
                       Excluir
                     </button>
                   </div>
@@ -422,7 +463,7 @@ export default function Home() {
                     </div>
 
                     <div style={styles.field}>
-                      <label style={styles.label}>Prazo final (auto 45 dias úteis)</label>
+                      <label style={styles.label}>Prazo final, auto 45 dias úteis</label>
                       <input
                         type="date"
                         value={active.dueDate || ""}
@@ -451,7 +492,7 @@ export default function Home() {
                                 checked={!!t.done}
                                 onChange={(e) => updateTask(t.id, { done: e.target.checked })}
                               />
-                              <span style={{ ...styles.taskTitle, opacity: t.done ? 0.6 : 1 }}>
+                              <span style={{ ...styles.taskTitle, opacity: t.done ? 0.65 : 1 }}>
                                 {t.title}
                               </span>
                             </label>
@@ -486,16 +527,6 @@ export default function Home() {
                             ) : null}
 
                             <div style={styles.fieldWide}>
-                              <label style={styles.label}>Link (opcional)</label>
-                              <input
-                                value={t.link || ""}
-                                onChange={(e) => updateTask(t.id, { link: e.target.value })}
-                                placeholder="ex.: link do blog, galeria, seleção…"
-                                style={styles.input}
-                              />
-                            </div>
-
-                            <div style={styles.fieldWide}>
                               <label style={styles.label}>Notas</label>
                               <input
                                 value={t.notes || ""}
@@ -520,6 +551,7 @@ export default function Home() {
         </footer>
       </div>
 
+      {/* Modal Novo Projeto */}
       {showNew ? (
         <div style={styles.modalOverlay} onClick={() => setShowNew(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -567,7 +599,7 @@ export default function Home() {
                 </div>
 
                 <div style={styles.field}>
-                  <label style={styles.label}>Prazo final (auto 45 dias úteis)</label>
+                  <label style={styles.label}>Prazo final, auto 45 dias úteis</label>
                   <input
                     type="date"
                     value={newJob.dueDate}
@@ -594,7 +626,7 @@ export default function Home() {
                 <button style={styles.btnGhost} onClick={() => setShowNew(false)}>
                   Cancelar
                 </button>
-                <button style={styles.btn} onClick={createJob}>
+                <button style={styles.btn} onClick={createProject}>
                   Criar Projeto
                 </button>
               </div>
@@ -603,6 +635,7 @@ export default function Home() {
         </div>
       ) : null}
 
+      {/* Modal Backup */}
       {showBackup ? (
         <div style={styles.modalOverlay} onClick={() => setShowBackup(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -679,8 +712,6 @@ const styles = {
     gridTemplateColumns: "360px 1fr",
     gap: 14,
   },
-  sidebar: {},
-  main: {},
 
   card: {
     background: "#1F1F1F",
