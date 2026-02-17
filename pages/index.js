@@ -29,7 +29,7 @@ const DELIVERY_MODE = {
 const TASK_TEMPLATES = {
   [`${PROJECT_TYPE.ENSAIO}__${DELIVERY_MODE.DIGITAL}`]: [
     { id: "backup", title: "FAZER BACKUP" },
-    { id: "blog_15", title: "ESCOLHER 15 FOTOS PARA O BLOG" },
+    { id: "blog_15", title: "ESCOLHER FOTOS PARA O BLOG" },
     { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
     { id: "filter_1", title: "PRIMEIRO FILTRO" },
     { id: "filter_final", title: "FILTRO FINAL" },
@@ -44,7 +44,7 @@ const TASK_TEMPLATES = {
 
   [`${PROJECT_TYPE.EVENTO}__${DELIVERY_MODE.DIGITAL}`]: [
     { id: "backup", title: "FAZER BACKUP" },
-    { id: "blog_50", title: "ESCOLHER 50 FOTOS PARA O BLOG" },
+    { id: "blog_50", title: "ESCOLHER FOTOS PARA O BLOG" },
     { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
     { id: "filter_1", title: "PRIMEIRO FILTRO" },
     { id: "filter_2", title: "SEGUNDO FILTRO" },
@@ -57,7 +57,7 @@ const TASK_TEMPLATES = {
 
   [`${PROJECT_TYPE.ENSAIO}__${DELIVERY_MODE.DIGITAL_ALBUM}`]: [
     { id: "backup", title: "FAZER BACKUP" },
-    { id: "blog_15", title: "ESCOLHER 15 FOTOS PARA O BLOG" },
+    { id: "blog_15", title: "ESCOLHER FOTOS PARA O BLOG" },
     { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
     { id: "filter_final", title: "FILTRO FINAL" },
     { id: "treat_fast", title: "TRATAMENTO RÁPIDO DE TODAS AS IMAGENS" },
@@ -76,7 +76,7 @@ const TASK_TEMPLATES = {
 
   [`${PROJECT_TYPE.EVENTO}__${DELIVERY_MODE.DIGITAL_ALBUM}`]: [
     { id: "backup", title: "FAZER BACKUP" },
-    { id: "blog_50", title: "ESCOLHER 50 FOTOS PARA O BLOG" },
+    { id: "blog_50", title: "ESCOLHER FOTOS PARA O BLOG" },
     { id: "blog_posted", title: "FOI POSTADO NO BLOG NO DIA", hasDate: true },
     { id: "filter_1", title: "PRIMEIRO FILTRO" },
     { id: "filter_2", title: "SEGUNDO FILTRO" },
